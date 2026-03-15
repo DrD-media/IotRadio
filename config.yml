@@ -1,0 +1,7 @@
+tunnel: 6b30d808-d45f-4707-89a7-912ee0d92b01
+credentials-file: C:\Users\Ефим\.cloudflared\6b30d808-d45f-4707-89a7-912ee0d92b01.json
+
+ingress:
+  - hostname: drd-life.trycloudflare.com  # ваше желаемое имя
+    service: http://localhost:5000
+  - service: http_status:404

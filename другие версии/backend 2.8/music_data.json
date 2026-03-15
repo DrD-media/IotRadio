@@ -1,0 +1,292 @@
+{
+  "tracks": [
+    {
+      "id": 1,
+      "filename": "track 1.mp3",
+      "title": "theme (metal rock cover)",
+      "artist": "PUBG",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке.",
+      "cover": "maxresdefault.jpg",
+      "created_date": "2024-01-15",
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+      ]
+    },
+    {
+      "id": 2,
+      "filename": "track 2.mp3",
+      "title": "Одну из легенд запомнят на сотни лет",
+      "artist": "Неизвестен",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "onesLegends.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "filename": "track 3.mp3",
+      "title": "WOT main theme",
+      "artist": "Andrey_Kulik and Andrius_Klimka",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "WOT main theme.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "filename": "track 4.mp3",
+      "title": "WOT Аэродром (Интро)",
+      "artist": "Andrius_Klimka",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "WOT airfield.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "filename": "track 5.mp3",
+      "title": "WOT Химмельсдорф (Интро)",
+      "artist": "Andrius_Klimka",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "WOT himmelsdorf.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "filename": "track 6.mp3",
+      "title": "Металлические трубы",
+      "artist": "Metal pipe",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "anix.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "filename": "track 7.mp3",
+      "title": "Tam gde kaif",
+      "artist": "GAYAZOV$ BROTHER$",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "tam 234.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "filename": "track 8.mp3",
+      "title": "ANGEL",
+      "artist": "Shipu, CLOUD ZERO",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "m1000x1000.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "filename": "track 9.mp3",
+      "title": "Ansi bas la vida",
+      "artist": "Indila",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "600x600bb.jpeg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "filename": "track 10.mp3",
+      "title": "Believer",
+      "artist": "Imagine Dragons",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "origBel.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id":11,
+      "filename": "track 11.mp3",
+      "title": "Hymn For The Weekend",
+      "artist": "Coldplay",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "unnamed cold.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+     "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "filename": "track 12.mp3",
+      "title": "On the Floor",
+      "artist": "Pitbull feat. Jennifer Lopez",
+      "description": "Кавер на главную тему PUBG в метал-рок аранжировке",
+      "cover": "300x300bb.jpg",
+      "created_date": null,
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": [
+        {
+          "id": 1,
+          "title": "Оригинальный текст",
+          "filename": "1.1.txt",
+          "language": "en"
+        },
+        {
+          "id": 2,
+          "title": "Русский перевод",
+          "filename": "1.2.txt",
+          "language": "ru"
+        }
+      ]
+    }
+  ]
+}

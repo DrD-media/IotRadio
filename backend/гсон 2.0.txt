@@ -1,0 +1,37 @@
+{
+  "track1.mp3": {
+    "title": "theme (metal rock cover)",
+    "artist": "PUBG",
+    "cover": "maxresdefault.jpg",
+    "created_date": "2024-01-15",
+    "playlists": null
+  },
+  "track2.mp3": {
+    "title": "Одну из легенд запомнят на сотни лет",
+    "artist": "Неизвестен",
+    "cover": "onesLegends.jfif",
+    "created_date": null,
+    "playlists": null
+  },
+  "track3.mp3": {
+    "title": "WOT main theme",
+    "artist": "Andrey_Kulik_and_Andrius_Klimka",
+    "cover": "WOT main theme.jpg",
+    "created_date": null,
+    "playlists": null
+  },
+  "track4.mp3": {
+    "title": "WOT Аэродром (Интро)",
+    "artist": "Andrius_Klimka",
+    "cover": "WOT airfield.jpg",
+    "created_date": null,
+    "playlists": null
+  },
+  "track5.mp3": {
+    "title": "Металлические трубы",
+    "artist": "Metal pipe",
+    "cover": "anix.jpg",
+    "created_date": null,
+    "playlists": null
+  }
+}

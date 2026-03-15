@@ -1,0 +1,158 @@
+import React from 'react';
+import Icon from '../Icon/Icon.jsx';
+import './TrackList.css';
+
+function TrackList({ 
+  tracks, 
+  currentTrack, 
+  isPlaying, 
+  isLoading, 
+  error, 
+  loopPlaylist,
+  onTrackSelect, 
+  onLikeTrack, 
+  onDownloadTrack, 
+  onReloadTracks,
+  onToggleLoopPlaylist,
+  // API_URL
+}) {
+
+  if (isLoading) {
+    return (
+      <div className="track-list">
+        <div className="loading-tracks">
+          <p>⏳ Загрузка списка треков...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="track-list">
+        <div className="error-message">
+          <p>❌ {error}</p>
+          <button onClick={onReloadTracks} className="refresh-btn small">
+            <Icon name="refresh" type="svg" size={22} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (tracks.length === 0) {
+    return (
+      <div className="track-list">
+        <div className="empty-list">
+          <p>📭 Нет доступных треков</p>
+          <p className="hint">Добавьте аудиофайлы в папку backend/music_files/</p>
+          <p className="hint">Поддерживаемые форматы: MP3, WAV, OGG, FLAC, M4A, AAC</p>
+          <button onClick={onReloadTracks} className="refresh-btn small">
+            <Icon name="refresh" type="svg" size={22} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="track-list">
+      <div className="track-list-header">
+        <h3>Библиотека треков ({tracks.length})</h3>
+        <div className="track-list-actions">
+          <button 
+            onClick={onToggleLoopPlaylist} 
+            className={`loop-playlist-btn ${loopPlaylist ? 'active' : ''}`}
+            title={loopPlaylist ? 'Проигрывать только выбранный трек' : 'Зациклить весь список треков'}
+          >
+            <Icon 
+              name={loopPlaylist ? "loopListOn" : "loopList"} 
+              type="svg" 
+              size={22} 
+            />
+            <span className="btn-text">
+              {loopPlaylist ? 'Весь список' : 'Только выбранный'}
+            </span>
+          </button>
+          <button onClick={onReloadTracks} className="refresh-btn small" title="Обновить список треков">
+            <Icon name="refresh" type="svg" size={22} />
+          </button>
+        </div>
+      </div>
+
+      <div className={`tracks-container ${tracks.length > 5 ? 'scrollable' : ''}`}>
+        <ul className="tracks">
+          {tracks.map(track => (
+            <li 
+              key={track.id} 
+              className={`track-item ${currentTrack?.id === track.id ? 'active' : ''}`}
+              onClick={() => onTrackSelect(track)}
+            >
+              <span className="track-number">{track.id}</span>
+              <div className="track-cover">
+                {track.cover ? (
+                  <img 
+                    // src={`${API_URL}/cover/${track.cover}`}  
+                    src={`/api/cover/${track.cover}`}
+                    alt={track.title}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.parentElement.innerHTML = `
+                        <div class="track-cover-placeholder">
+                          🎵
+                        </div>
+                      `;
+                    }}
+                  />
+                ) : (
+                  <div className="track-cover-placeholder">
+                    🎵
+                  </div>
+                )}
+              </div>
+              <div className="track-details">
+                <strong className="track-title">{track.title}</strong>
+                <span className="track-artist">{track.artist}</span>
+              </div>
+              <div className="track-actions">
+                <div className="track-status">
+                  {currentTrack?.id === track.id && isPlaying && (
+                    <span className="playing-indicator">
+                      <Icon name="play" type="svg" size={16} /> Играет
+                    </span>
+                  )}
+                  {currentTrack?.id === track.id && !isPlaying && (
+                    <span className="paused-indicator">
+                      <Icon name="pause" type="svg" size={16} /> На паузе
+                    </span>
+                  )}
+                </div>
+                <button 
+                  className={`track-like-btn ${track.liked ? 'liked' : ''}`}
+                  onClick={(e) => onLikeTrack(track.id, e)}
+                  title={track.liked ? 'Убрать из избранного' : 'Добавить в избранное'}
+                >
+                  <Icon 
+                    name={track.liked ? "heartFilled" : "heart"} 
+                    type="png" 
+                    size={20}
+                    color={track.liked ? "#ff6b6b" : undefined}
+                  />
+                </button>
+                <button 
+                  className="track-download-btn"
+                  onClick={(e) => onDownloadTrack(track, e)}
+                  title="Скачать трек"
+                >
+                  <Icon name="download" type="svg" size={20} />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+export default TrackList;

@@ -1,0 +1,406 @@
+import React, { useState, useRef, useEffect } from 'react';
+import Icon from '../Icon/Icon';
+import './AdvancedSettingsModal.css';
+
+const AdvancedSettingsModal = ({ 
+  isOpen, 
+  onClose, 
+  volume, 
+  onVolumeChange,
+  isBoosted,
+  onBoostToggle,
+  equalizerSettings: initialEqSettings,
+  onEqualizerChange
+}) => {
+  const [activeTab, setActiveTab] = useState('boost');
+  const [localVolume, setLocalVolume] = useState(volume);
+  const [localBoosted, setLocalBoosted] = useState(isBoosted);
+  const [localEqSettings, setLocalEqSettings] = useState(initialEqSettings || {
+    '60hz': 0, '230hz': 0, '910hz': 0, '3.6khz': 0, '14khz': 0,
+    'bass': 0, 'treble': 0
+  });
+  
+  const modalRef = useRef();
+
+  // Простая инициализация - загружаем настройки при открытии
+  useEffect(() => {
+    if (isOpen) {
+      const savedSettings = localStorage.getItem('audioSettings');
+      if (savedSettings) {
+        try {
+          const settings = JSON.parse(savedSettings);
+          
+          if (settings.boosted !== undefined) {
+            setLocalBoosted(settings.boosted);
+          }
+          
+          if (settings.equalizer) {
+            setLocalEqSettings(settings.equalizer);
+          }
+          
+          if (settings.volume !== undefined) {
+            setLocalVolume(settings.volume);
+          }
+        } catch (e) {
+          console.error('Error loading settings:', e);
+        }
+      }
+    }
+  }, [isOpen]);
+
+  // Сохранение настроек
+  const saveSettings = () => {
+    const settings = {
+      boosted: localBoosted,
+      volume: localVolume,
+      equalizer: localEqSettings,
+      lastUpdated: new Date().toISOString()
+    };
+    localStorage.setItem('audioSettings', JSON.stringify(settings));
+  };
+
+  const handleBoostToggle = () => {
+    const newBoosted = !localBoosted;
+    setLocalBoosted(newBoosted);
+    
+    // Применяем усиление к текущему аудио
+    const audioElement = document.querySelector('audio');
+    if (audioElement) {
+      if (newBoosted) {
+        // Усиление в 2 раза (максимум 200%)
+        audioElement.volume = Math.min(localVolume * 2, 2);
+      } else {
+        audioElement.volume = localVolume;
+      }
+    }
+    
+    // Сохраняем
+    saveSettings();
+    
+    // Колбэк родителю
+    if (onBoostToggle) {
+      onBoostToggle(newBoosted);
+    }
+  };
+
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setLocalVolume(newVolume);
+    
+    // Применяем к текущему аудио
+    const audioElement = document.querySelector('audio');
+    if (audioElement) {
+      if (localBoosted) {
+        audioElement.volume = Math.min(newVolume * 2, 2);
+      } else {
+        audioElement.volume = newVolume;
+      }
+    }
+    
+    // Вызываем колбэк из родителя
+    if (onVolumeChange) {
+      onVolumeChange(newVolume);
+    }
+  };
+
+  const handleVolumeMouseUp = () => {
+    // Сохраняем после окончания перетаскивания
+    saveSettings();
+  };
+
+  // Простая реализация эквалайзера через CSS фильтры
+  const applyEqToAudio = (eqSettings) => {
+    const audioElement = document.querySelector('audio');
+    if (!audioElement) return;
+    
+    // Рассчитываем простой фильтр на основе настроек эквалайзера
+    const bassBoost = eqSettings['bass'] || 0;
+    const trebleBoost = eqSettings['treble'] || 0;
+    
+    // Применяем простую настройку громкости для разных частот
+    // В реальном проекте здесь нужно использовать Web Audio API
+    // Это упрощенная версия для демонстрации
+    console.log('EQ settings applied:', eqSettings);
+    
+    // Сохраняем настройки для будущих треков
+    saveSettings();
+  };
+
+  const handleEqualizerChange = (band, value) => {
+    const newEqSettings = { ...localEqSettings, [band]: value };
+    setLocalEqSettings(newEqSettings);
+    
+    // Применяем изменения
+    applyEqToAudio(newEqSettings);
+    
+    // Колбэк родителю
+    if (onEqualizerChange) {
+      onEqualizerChange(newEqSettings);
+    }
+  };
+
+  const handleResetEqualizer = () => {
+    const defaultEq = {
+      '60hz': 0, '230hz': 0, '910hz': 0, '3.6khz': 0, '14khz': 0,
+      'bass': 0, 'treble': 0
+    };
+    setLocalEqSettings(defaultEq);
+    
+    // Сбрасываем настройки
+    applyEqToAudio(defaultEq);
+    
+    if (onEqualizerChange) {
+      onEqualizerChange(defaultEq);
+    }
+  };
+
+  // Рассчитываем отображаемый процент громкости
+  const getDisplayVolumePercent = () => {
+    const basePercent = Math.round(localVolume * 100);
+    return localBoosted ? Math.min(basePercent * 2, 200) : basePercent;
+  };
+
+  // Максимальное значение для ползунка
+  const getMaxVolume = () => {
+    return 1; // Всегда 100%, усиление применяется отдельно
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div 
+        className="advanced-settings-modal" 
+        onClick={e => e.stopPropagation()}
+        ref={modalRef}
+      >
+        <button className="modal-close-btn" onClick={onClose}>
+          <Icon name="close" type="png" size={24} />
+        </button>
+
+        <h2 className="settings-title">Дополнительные настройки звука</h2>
+
+        {/* Табы */}
+        <div className="settings-tabs">
+          <button 
+            className={`settings-tab ${activeTab === 'boost' ? 'active' : ''}`}
+            onClick={() => setActiveTab('boost')}
+          >
+            <Icon name="volumeOnMax" type="emoji" size={20} />
+            <span>Усиление</span>
+          </button>
+          <button 
+            className={`settings-tab ${activeTab === 'equalizer' ? 'active' : ''}`}
+            onClick={() => setActiveTab('equalizer')}
+          >
+            <Icon name="equalizer" type="emoji" size={20} />
+            <span>Эквалайзер</span>
+          </button>
+        </div>
+
+        {/* Содержимое табов */}
+        <div className="settings-content">
+          {activeTab === 'boost' && (
+            <div className="boost-settings">
+              <div className="boost-header">
+                <h3>Усиление громкости</h3>
+                <div className={`boost-status ${localBoosted ? 'active' : ''}`}>
+                  {localBoosted ? 'ВКЛ (200%)' : 'ВЫКЛ (100%)'}
+                </div>
+              </div>
+              
+              <div className="boost-description">
+                {localBoosted 
+                  ? '✅ Усиление активно: громкость увеличена до 200%'
+                  : '⚡ Включите для увеличения максимальной громкости'}
+                <span className="boost-warning"> Внимание: высокий уровень может повредить слух!</span>
+              </div>
+
+              <div className="boost-control">
+                <button 
+                  className={`boost-toggle-btn ${localBoosted ? 'active' : ''}`}
+                  onClick={handleBoostToggle}
+                >
+                  {localBoosted ? 'Отключить усиление ×2' : 'Включить усиление ×2'}
+                </button>
+                
+                <div className="volume-slider-container">
+                  <label>
+                    Текущая громкость: <strong>{getDisplayVolumePercent()}%</strong>
+                    {localBoosted && ' (с усилением)'}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max={getMaxVolume()}
+                    step="0.01"
+                    value={localVolume}
+                    onChange={handleVolumeChange}
+                    onMouseUp={handleVolumeMouseUp}
+                    onTouchEnd={handleVolumeMouseUp}
+                    className="volume-slider"
+                  />
+                  <div className="volume-labels">
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>{localBoosted ? '200%' : '100%'}</span>
+                  </div>
+                </div>
+
+                <div className="volume-info">
+                  <p className="volume-tip">
+                    <strong>💡 Совет:</strong> Для чистого звука используйте 70-90% громкости.
+                    {localBoosted && ' Усиление может добавить искажения на максимальных уровнях.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'equalizer' && (
+            <div className="equalizer-settings">
+              <div className="equalizer-header">
+                <h3>5-полосный эквалайзер</h3>
+                <div className="equalizer-actions">
+                  <button className="equalizer-reset-btn" onClick={handleResetEqualizer}>
+                    <Icon name="refresh" type="svg" size={16} />
+                    Сбросить
+                  </button>
+                  <span className="equalizer-status">
+                    {Object.values(localEqSettings).some(v => v !== 0) 
+                      ? 'Настроено' 
+                      : 'По умолчанию'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="eq-bands">
+                {[
+                  { key: '60hz', label: '60 Гц', type: 'Низкие', freq: 'Бас' },
+                  { key: '230hz', label: '230 Гц', type: 'Низкие', freq: 'Низ. середина' },
+                  { key: '910hz', label: '910 Гц', type: 'Средние', freq: 'Середина' },
+                  { key: '3.6khz', label: '3.6 кГц', type: 'Высокие', freq: 'Верх. середина' },
+                  { key: '14khz', label: '14 кГц', type: 'Высокие', freq: 'Верхние' }
+                ].map(({ key, label, type, freq }) => (
+                  <div key={key} className="eq-band">
+                    <div className="eq-band-header">
+                      <label>{label}</label>
+                      <span className="eq-band-type">{type}</span>
+                      <small>{freq}</small>
+                    </div>
+                    <input
+                      type="range"
+                      min="-12"
+                      max="12"
+                      step="1"
+                      value={localEqSettings[key] || 0}
+                      onChange={(e) => handleEqualizerChange(key, parseInt(e.target.value))}
+                      className="eq-slider"
+                      orient="vertical"
+                    />
+                    <div className="eq-value-display">
+                      <span className={`eq-value ${localEqSettings[key] > 0 ? 'positive' : localEqSettings[key] < 0 ? 'negative' : ''}`}>
+                        {localEqSettings[key] > 0 ? '+' : ''}{localEqSettings[key] || 0}dB
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="eq-effects">
+                <div className="eq-effect">
+                  <div className="eq-effect-header">
+                    <label>Басы (Bass)</label>
+                    <Icon name="volumeLow" type="png" size={16} />
+                  </div>
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="1"
+                    value={localEqSettings['bass'] || 0}
+                    onChange={(e) => handleEqualizerChange('bass', parseInt(e.target.value))}
+                    className="effect-slider"
+                  />
+                  <span className={`effect-value ${localEqSettings['bass'] > 0 ? 'positive' : localEqSettings['bass'] < 0 ? 'negative' : ''}`}>
+                    {localEqSettings['bass'] > 0 ? '+' : ''}{localEqSettings['bass'] || 0}dB
+                  </span>
+                </div>
+
+                <div className="eq-effect">
+                  <div className="eq-effect-header">
+                    <label>Высокие (Treble)</label>
+                    <Icon name="volumeOn" type="png" size={16} />
+                  </div>
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="1"
+                    value={localEqSettings['treble'] || 0}
+                    onChange={(e) => handleEqualizerChange('treble', parseInt(e.target.value))}
+                    className="effect-slider"
+                  />
+                  <span className={`effect-value ${localEqSettings['treble'] > 0 ? 'positive' : localEqSettings['treble'] < 0 ? 'negative' : ''}`}>
+                    {localEqSettings['treble'] > 0 ? '+' : ''}{localEqSettings['treble'] || 0}dB
+                  </span>
+                </div>
+              </div>
+
+              <div className="eq-presets">
+                <h4>Быстрые пресеты:</h4>
+                <div className="presets-grid">
+                  <button className="eq-preset" onClick={() => {
+                    const preset = { '60hz': 6, '230hz': 4, '910hz': 0, '3.6khz': 2, '14khz': 4, 'bass': 8, 'treble': 4 };
+                    setLocalEqSettings(preset);
+                    applyEqToAudio(preset);
+                  }}>
+                    <Icon name="feature1" type="png" size={20} />
+                    <span>Басы+</span>
+                    <small>Для басовой музыки</small>
+                  </button>
+                  <button className="eq-preset" onClick={() => {
+                    const preset = { '60hz': -2, '230hz': -1, '910hz': 2, '3.6khz': 4, '14khz': 6, 'bass': 0, 'treble': 8 };
+                    setLocalEqSettings(preset);
+                    applyEqToAudio(preset);
+                  }}>
+                    <Icon name="musicNote" type="png" size={20} />
+                    <span>Ясность</span>
+                    <small>Для вокала</small>
+                  </button>
+                  <button className="eq-preset" onClick={() => {
+                    const preset = { '60hz': 4, '230hz': 2, '910hz': 0, '3.6khz': 2, '14khz': 4, 'bass': 6, 'treble': 6 };
+                    setLocalEqSettings(preset);
+                    applyEqToAudio(preset);
+                  }}>
+                    <Icon name="volumeOn" type="png" size={20} />
+                    <span>Рок</span>
+                    <small>Для гитар</small>
+                  </button>
+                  <button className="eq-preset" onClick={() => {
+                    const preset = { '60hz': 8, '230hz': 6, '910hz': -2, '3.6khz': -4, '14khz': -6, 'bass': 10, 'treble': -8 };
+                    setLocalEqSettings(preset);
+                    applyEqToAudio(preset);
+                  }}>
+                    <Icon name="heart" type="png" size={20} />
+                    <span>Хип-хоп</span>
+                    <small>Для битов</small>
+                  </button>
+                </div>
+              </div>
+
+              <div className="eq-info">
+                <p>
+                  <Icon name="info" type="png" size={16} />
+                  <strong>Настройки сохраняются автоматически</strong> и применяются ко всем трекам
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdvancedSettingsModal;

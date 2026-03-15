@@ -1,0 +1,432 @@
+/* Reset и базовые стили */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  transition: background 0.3s ease;
+}
+
+body.dark-theme {
+  background: linear-gradient(135deg, #121212 0%, #1a1a2e 100%);
+}
+
+.App {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 1px 5px 1px 5px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* HEADER */
+.App-header {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  margin-bottom: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  width: 100%;
+}
+
+.header-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  font-size: 1.8rem;
+  font-weight: 900;
+  background: linear-gradient(90deg, #667eea 0%, #ff6b6b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+}
+
+.header-center {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.header-center h1 {
+  color: white;
+  font-size: 1.4rem;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.header-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.header-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 100px;
+  white-space: nowrap;
+}
+
+.header-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+}
+
+.header-btn:active {
+  transform: translateY(0);
+}
+
+.header-btn.small {
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.theme-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+.theme-btn:hover {
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4290 100%);
+}
+
+.account-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.account-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-icon {
+  font-size: 1.2rem;
+}
+
+/* Основной контейнер */
+
+.main-container{
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  /* min-height: 100vh; */
+  display: flex;
+  /* flex-direction: column; */
+}
+.sidebar{
+  flex: 1;
+  min-width: 60px;
+  min-height: 200px;
+  max-width: 200px;
+  background-color: aqua;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+/* FOOTER */
+.footer {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  width: 100%;
+}
+
+.footer-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.footer-year {
+  font-size: 1.5rem;
+  font-weight: 900;
+  background: white;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 1px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  white-space: nowrap;
+}
+
+.footer-center {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.footer-center p {
+  color: white;
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.footer-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.footer-logo {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: white;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+.debug-info {
+  margin: 5px 0px 0px 0px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.debug-info code {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* === СТИЛИ ДЛЯ ИКОНОК === */
+
+/* Базовые стили для всех иконок */
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+/* Фильтр для SVG (черный → белый) */
+.icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Эмодзи как fallback */
+.icon-emoji {
+  display: inline-block;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Центрирование круглых кнопок */
+.control-btn,
+.like-btn,
+.track-like-btn,
+.volume-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Эффекты при наведении */
+button:hover .icon {
+  filter: brightness(0) invert(0.8);
+  transform: scale(1.1);
+}
+
+/* Цветные иконки для особых состояний */
+.track-like-btn.liked .icon {
+  filter: brightness(0) invert(0.7) sepia(1) saturate(5) hue-rotate(320deg);
+}
+
+/* Фиксированная ширина для кнопки темы */
+.theme-btn {
+  min-width: 120px;
+}
+
+/* Адаптивность для header и футера */
+@media (max-width: 1024px) {
+  .App-header, .footer {
+    padding: 0 15px;
+  }
+  
+  .header-center h1, .footer-center p {
+    font-size: 1.1rem;
+  }
+  
+  .header-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    min-width: 90px;
+  }
+  
+  .logo, .footer-logo {
+    font-size: 1.4rem;
+  }
+  
+  .footer-year {
+    font-size: 1.3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .App-header, .footer {
+    flex-direction: column;
+    height: auto;
+    padding: 10px;
+    gap: 10px;
+  }
+  
+  .header-left, .header-center, .header-right,
+  .footer-left, .footer-center, .footer-right {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .header-center, .footer-center {
+    padding: 0 0;
+  }
+  
+  .header-right, .footer-right {
+    gap: 10px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .App-header, .footer {
+    padding: 5px;
+    gap: 8px;
+  }
+
+  .header-center h1, .footer-center p {
+    font-size: 0.9rem;
+  }
+  
+  .header-btn {
+    padding: 6px 10px;
+    min-width: 80px;
+    font-size: 0.8rem;
+  }
+  
+  .header-btn.small {
+    min-width: 35px;
+    width: 35px;
+    height: 35px;
+  }
+  
+  .logo, .footer-logo {
+    font-size: 1.2rem;
+  }
+  
+  .footer-year {
+    font-size: 1.1rem;
+  }
+  
+  .player-container {
+    padding: 0 5px;
+  }
+  
+  .debug-info {
+    font-size: 0.7rem;
+    gap: 5px;
+  }
+}
+
+
+/* Кнопка дополнительных настроек */
+.settings-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  padding: 0;
+  margin: 0;
+  margin-left: 5px;
+}
+
+.settings-btn:hover {
+  background: rgba(102, 126, 234, 0.3);
+  transform: scale(1.1);
+  border-color: rgba(102, 126, 234, 0.6);
+}
+
+/* Адаптивность для новых кнопок */
+@media (max-width: 480px) {
+  .settings-btn {
+    width: 35px;
+    height: 35px;
+    font-size: 1.3rem;
+    margin-left: 2px;
+  }
+}

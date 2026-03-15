@@ -1,0 +1,405 @@
+import { useState, useEffect, useRef } from 'react'
+import axios from 'axios'
+import './App.css'
+
+function App() {
+  const [tracks, setTracks] = useState([])
+  const [currentTrack, setCurrentTrack] = useState(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [isMuted, setIsMuted] = useState(false)
+  const [prevVolume, setPrevVolume] = useState(1)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(null)
+  
+  const audioRef = useRef(null)
+  
+  // Базовый URL для бэкенда
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  
+  // Загружаем список треков при старте
+  useEffect(() => {
+    let isMounted = true
+    
+    const fetchTracks = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const response = await axios.get(`${API_URL}/tracks`)
+        if (isMounted) {
+          setTracks(response.data)
+          if (response.data.length > 0) {
+            setCurrentTrack(prev => prev || response.data[0])
+          }
+          setIsLoading(false)
+        }
+      } catch (error) {
+        console.error('Error loading tracks:', error)
+        if (isMounted) {
+          setError('Не удалось загрузить треки. Проверьте бэкенд.')
+          setIsLoading(false)
+        }
+      }
+    }
+    
+    fetchTracks()
+    
+    return () => {
+      isMounted = false
+    }
+  }, [API_URL])
+
+  // Функция для перезагрузки треков
+  const reloadTracks = async () => {
+    try {
+      setIsLoading(true)
+      const response = await axios.get(`${API_URL}/tracks`)
+      setTracks(response.data)
+      if (response.data.length > 0 && !currentTrack) {
+        setCurrentTrack(response.data[0])
+      }
+      setIsLoading(false)
+      setError(null)
+    } catch (error) {
+      console.error('Error reloading tracks:', error)
+      setError('Ошибка при обновлении списка треков')
+      setIsLoading(false)
+    }
+  }
+
+  const handleTrackSelect = (track) => {
+    setCurrentTrack(track)
+    setIsPlaying(true)
+    
+    if (audioRef.current) {
+      audioRef.current.src = `${API_URL}/play/${track.file}`
+      audioRef.current.volume = isMuted ? 0 : volume
+      audioRef.current.load()
+      audioRef.current.play().catch(e => console.log("Autoplay blocked:", e))
+    }
+  }
+  
+  const togglePlayPause = () => {
+    if (!currentTrack) return
+    
+    if (!audioRef.current.src && currentTrack.file) {
+      audioRef.current.src = `${API_URL}/play/${currentTrack.file}`
+      audioRef.current.volume = isMuted ? 0 : volume
+    }
+    
+    if (isPlaying) {
+      audioRef.current.pause()
+    } else {
+      audioRef.current.play().catch(e => {
+        console.log("Play failed:", e)
+        setIsPlaying(false)
+      })
+    }
+    setIsPlaying(!isPlaying)
+  }
+  
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      const currentTimeValue = audioRef.current.currentTime
+      const durationValue = audioRef.current.duration || 0
+      const progressPercent = durationValue > 0 ? (currentTimeValue / durationValue) * 100 : 0
+      setCurrentTime(currentTimeValue)
+      setDuration(durationValue)
+      setProgress(progressPercent)
+    }
+  }
+  
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration || 0)
+      setProgress(0)
+      setCurrentTime(0)
+    }
+  }
+  
+  const handleProgressClick = (e) => {
+    if (!audioRef.current || !currentTrack || duration === 0) return
+    
+    const progressBar = e.currentTarget
+    const clickPosition = e.clientX - progressBar.getBoundingClientRect().left
+    const progressBarWidth = progressBar.clientWidth
+    const percent = clickPosition / progressBarWidth
+    
+    const newTime = duration * percent
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+    setProgress(percent * 100)
+  }
+  
+  const toggleMute = () => {
+    if (isMuted) {
+      // Включаем звук, восстанавливаем предыдущую громкость
+      setIsMuted(false)
+      setVolume(prevVolume)
+      if (audioRef.current) {
+        audioRef.current.volume = prevVolume
+      }
+    } else {
+      // Выключаем звук, запоминаем текущую громкость
+      setIsMuted(true)
+      setPrevVolume(volume)
+      setVolume(0)
+      if (audioRef.current) {
+        audioRef.current.volume = 0
+      }
+    }
+  }
+  
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value)
+    setVolume(newVolume)
+    
+    if (newVolume === 0) {
+      setIsMuted(true)
+    } else if (isMuted) {
+      setIsMuted(false)
+      setPrevVolume(newVolume)
+    }
+    
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume
+    }
+  }
+  
+  const handleNextTrack = () => {
+    if (!currentTrack || tracks.length === 0) return
+    
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack.id)
+    const nextIndex = (currentIndex + 1) % tracks.length
+    handleTrackSelect(tracks[nextIndex])
+  }
+  
+  const handlePrevTrack = () => {
+    if (!currentTrack || tracks.length === 0) return
+    
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack.id)
+    const prevIndex = currentIndex === 0 ? tracks.length - 1 : currentIndex - 1
+    handleTrackSelect(tracks[prevIndex])
+  }
+
+  // Форматируем время в MM:SS
+  const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds === 0) return '0:00'
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>🎵 Мой Музыкальный Плеер (Vite + React)</h1>
+        <p className="subtitle">Лёгкий и быстрый плеер</p>
+      </header>
+      
+      <main className="player-container">
+        {/* Основной плеер */}
+        <div className="main-player">
+          {currentTrack ? (
+            <>
+              <div className="player-content">
+                {/* Левый блок - обложка */}
+                <div className="album-art">
+                  <div className="album-art-placeholder">
+                    🎵
+                    <div className="album-hint">Обложка альбома</div>
+                  </div>
+                  {/* В будущем тут будет <img src={currentTrack.cover} alt="Album cover" /> */}
+                </div>
+                
+                {/* Правый блок - управление */}
+                <div className="player-controls">
+                  {/* Верхняя часть: информация о треке */}
+                  <div className="track-header">
+                    <div className="track-title-section">
+                      <h2 className="track-title">{currentTrack.title}</h2>
+                      <p className="track-artist">{currentTrack.artist}</p>
+                    </div>
+                    <div className="track-id-section">
+                      {/* Уберем в будущем */}
+                      <span className="track-id-label">ID</span>
+                      <span className="track-id-value">{currentTrack.id}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Средняя часть: прогресс бар */}
+                  <div className="progress-section">
+                    <div 
+                      className="progress-bar" 
+                      onClick={handleProgressClick}
+                    >
+                      <div 
+                        className="progress-fill" 
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                    <div className="time-display">
+                      <span className="current-time">{formatTime(currentTime)}</span>
+                      <span className="duration">{formatTime(duration)}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Нижняя часть: кнопки управления и громкость */}
+                  <div className="player-actions">
+                    {/* Кнопки управления треком */}
+                    <div className="playback-controls">
+                      <button onClick={handlePrevTrack} className="control-btn" title="Предыдущий трек">
+                        ⏮️
+                      </button>
+                      
+                      <button onClick={togglePlayPause} className="play-btn" title={isPlaying ? 'Остановить' : 'Воспроизвести'}>
+                        {isPlaying ? '⏸️ Остановить' : '▶️ Воспроизвести'}
+                      </button>
+                      
+                      <button onClick={handleNextTrack} className="control-btn" title="Следующий трек">
+                        ⏭️
+                      </button>
+                    </div>
+                    
+                    {/* Регулировка громкости */}
+                    <div className="volume-control">
+                      <button 
+                        onClick={toggleMute} 
+                        className="volume-toggle-btn"
+                        title={isMuted ? 'Включить звук' : 'Выключить звук'}
+                      >
+                        {isMuted ? '🔇' : volume > 0.5 ? '🔊' : '🔉'}
+                      </button>
+                      
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={isMuted ? 0 : volume}
+                        onChange={handleVolumeChange}
+                        className="volume-slider"
+                        title="Громкость"
+                      />
+                      
+                      <span className="volume-percent">
+                        {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Скрытый audio элемент */}
+              <audio
+                ref={audioRef}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onEnded={() => {
+                  setIsPlaying(false)
+                  handleNextTrack()
+                }}
+                onError={(e) => console.error("Audio error:", e)}
+              />
+            </>
+          ) : (
+            <div className="no-track">
+              {isLoading ? (
+                <>
+                  <p>⏳ Загрузка треков...</p>
+                  <div className="loading-spinner"></div>
+                </>
+              ) : error ? (
+                <>
+                  <p>❌ {error}</p>
+                  <button onClick={reloadTracks} className="refresh-btn">
+                    Попробовать снова
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>🎵 Выберите трек для воспроизведения</p>
+                  <button onClick={reloadTracks} className="refresh-btn">
+                    Обновить список треков
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Список треков */}
+        <div className="track-list">
+          <div className="track-list-header">
+            <h3>Библиотека треков ({tracks.length})</h3>
+            <button onClick={reloadTracks} className="refresh-btn small" title="Обновить список треков">
+              🔄
+            </button>
+          </div>
+          
+          {isLoading ? (
+            <div className="loading-tracks">
+              <p>⏳ Загрузка списка треков...</p>
+            </div>
+          ) : error ? (
+            <div className="error-message">
+              <p>❌ {error}</p>
+              <button onClick={reloadTracks} className="refresh-btn small">
+                Повторить
+              </button>
+            </div>
+          ) : tracks.length === 0 ? (
+            <div className="empty-list">
+              <p>📭 Нет доступных треков</p>
+              <p className="hint">Добавьте аудиофайлы в папку backend/music_files/</p>
+              <p className="hint">Поддерживаемые форматы: MP3, WAV, OGG, FLAC, M4A, AAC</p>
+              <button onClick={reloadTracks} className="refresh-btn small">
+                Проверить снова
+              </button>
+            </div>
+          ) : (
+            <ul className="tracks">
+              {tracks.map(track => (
+                <li 
+                  key={track.id} 
+                  className={`track-item ${currentTrack?.id === track.id ? 'active' : ''}`}
+                  onClick={() => handleTrackSelect(track)}
+                >
+                  <span className="track-number">{track.id}</span>
+                  <div className="track-details">
+                    <strong className="track-title">{track.title}</strong>
+                    <span className="track-artist">{track.artist}</span>
+                    <span className="track-filename">{track.file}</span>
+                  </div>
+                  <div className="track-status">
+                    {currentTrack?.id === track.id && isPlaying && (
+                      <span className="playing-indicator">▶️ Играет</span>
+                    )}
+                    {currentTrack?.id === track.id && !isPlaying && (
+                      <span className="paused-indicator">⏸️ На паузе</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </main>
+      
+      <footer className="footer">
+        <p>Сделано с Vite + React + Python Flask</p>
+        <p className="debug-info">
+          API: <code>{API_URL}</code> | 
+          Треков: {tracks.length} | 
+          Громкость: {isMuted ? '0%' : `${Math.round(volume * 100)}%`} |
+          {isLoading && ' ⏳ Загрузка...'}
+        </p>
+      </footer>
+    </div>
+  )
+}
+
+export default App

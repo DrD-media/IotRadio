@@ -1,0 +1,43 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0', // Разрешаем доступ со всех IP
+    port: 5173, // 5173
+
+    // Добавьте это:
+    hmr: {
+      host: 'localhost'
+    },
+
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000', 
+        changeOrigin: true,
+        // secure: false,
+        //   // Явно говорим проксировать все запросы к /api
+        //   configure: (proxy, _options) => {
+        //     proxy.on('proxyReq', (proxyReq, req, _res) => {
+        //       console.log('Proxying:', req.method, req.url);
+        //     });
+        //   }
+        // },
+        // // Можете также добавить явно для /cover
+        // '/cover': {
+        //   target: 'http://localhost:5000/api',
+        //   changeOrigin: true,
+        //   rewrite: (path) => path.replace(/^\/cover/, '/cover')
+        secure: false,
+        // Упрощаем - убираем configure, если он не нужен
+      },
+      // Добавляем для /cover
+      '/cover': {
+        target: 'http://localhost:5000/api',
+        changeOrigin: true,
+        // rewrite: (path) => path.replace(/^\/cover/, '/cover') // Можно убрать - и так работает
+      }
+    }
+  }
+})

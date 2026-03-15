@@ -1,0 +1,11 @@
+[
+  {
+    "id": "track1.mp3",
+    "name": "track1.mp3",
+    "title": "Капля",
+    "artist": "НН",
+    "cover": "rd.png",
+    "created_date": none,
+    "playlists": none
+  }
+]

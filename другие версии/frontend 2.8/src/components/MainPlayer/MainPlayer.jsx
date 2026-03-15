@@ -1,0 +1,214 @@
+import React, { useState } from 'react'; //import React, { useState, useRef } from 'react';
+import Icon from '../Icon/Icon.jsx';
+import TrackInfoModal from '../TrackInfoModal/TrackInfoModal';
+import './MainPlayer.css';
+
+function MainPlayer({ 
+  currentTrack, 
+  isPlaying, 
+  volume, 
+  isMuted, 
+  loopTrack, 
+  onPlayPause,
+  onNextTrack,
+  onPrevTrack,
+  onVolumeChange,
+  onToggleMute,
+  onProgressClick,
+  onLikeTrack,
+  onToggleLoopTrack,
+  currentTime,
+  duration,
+  progress,
+  API_URL = ''
+}) {
+
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  
+  const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds === 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getVolumeIcon = () => {
+    if (isMuted) return "volumeOff";
+    // if (isBoosted && volume > 0.5) return "volumeOnMax";
+    if (volume > 0.5) return "volumeOn";
+    if (volume > 0.15) return "volumeLow";
+    if (volume > 0) return "volumeMin";
+    
+    return "volumeOff";
+  };
+
+  if (!currentTrack) {
+    return (
+      <div className="main-player">
+        <div className="no-track">
+          <p>🎵 Выберите трек для воспроизведения</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="main-player">
+        <div className="player-content">
+          <div className="album-art-container">
+            <div className="album-art">
+              {currentTrack.cover ? (
+                <div className={`album-art-img ${!isPlaying ? 'small' : ''}`}>
+                  <img 
+                    src={`/api/cover/${currentTrack.cover}`}
+                    alt="Обложка альбома" 
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.parentElement.innerHTML = `
+                        <div class="album-art-placeholder ${!isPlaying ? 'small' : ''}">
+                          🎵
+                          <div class="album-hint">Обложка альбома</div>
+                        </div>
+                      `;
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className={`album-art-placeholder ${!isPlaying ? 'small' : ''}`}>
+                  🎵
+                  <div className="album-hint">Обложка альбома</div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="player-controls">
+            <div className="track-header">
+              <div className="track-title-section">
+                <h2 className="current-track-title">{currentTrack.title}</h2>
+                <div className="current-track-artist">{currentTrack.artist}</div>
+              </div>
+              <div className="track-header-right">
+                <button 
+                  className={`like-btn ${currentTrack.liked ? 'liked' : ''}`}
+                  onClick={(e) => onLikeTrack(currentTrack.id, e)}
+                  title={currentTrack.liked ? 'Убрать из избранного' : 'Добавить в избранное'}
+                >
+                  <Icon 
+                    name={currentTrack.liked ? "heartFilled" : "heart"} 
+                    type="png" 
+                    size={24}
+                    color={currentTrack.liked ? "#ff6b6b" : undefined}
+                  />
+                </button>
+
+                {/* НОВАЯ КНОПКА - Информация о треке */}
+                <button 
+                  className="info-btn"
+                  onClick={() => setIsInfoModalOpen(true)}
+                  title="Информация о треке"
+                >
+                  <span className="info-letter">i</span>
+                </button>
+
+                <div className="track-id-section">
+                  <span className="track-id-label">ID</span>
+                  <span className="track-id-value">{currentTrack.id}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="progress-section">
+              <div 
+                className="progress-bar" 
+                onClick={onProgressClick}
+              >
+                <div 
+                  className="progress-fill" 
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <div className="time-display">
+                <span className="current-time">{formatTime(currentTime)}</span>
+                <span className="duration">{formatTime(duration)}</span>
+              </div>
+            </div>
+            
+            <div className="player-actions">
+              <div className="playback-controls">
+                <button onClick={onPrevTrack} className="control-btn" title="Предыдущий трек">
+                  <Icon name="prev" type="svg" size={20} />
+                </button>
+                
+                <button onClick={onPlayPause} className="play-btn" title={isPlaying ? 'Остановить' : 'Воспроизвести'}>
+                  <Icon 
+                    name={isPlaying ? "pause" : "play"} 
+                    type="svg" 
+                    size={20} 
+                  />
+                  <span className="btn-text">{isPlaying ? 'Остановить' : 'Воспроизвести'}</span>
+                </button>
+                
+                <button onClick={onNextTrack} className="control-btn" title="Следующий трек">
+                  <Icon name="next" type="svg" size={20} />
+                </button>
+
+                <button 
+                  onClick={onToggleLoopTrack} 
+                  className={`control-btn ${loopTrack ? 'active' : ''}`}
+                  title={loopTrack ? 'Выключить повтор трека' : 'Включить повтор трека'}
+                >
+                  <Icon 
+                    name={loopTrack ? "loopTrackOn" : "loopTrack"} 
+                    type="svg" 
+                    size={20} 
+                  />
+                </button>
+              </div>
+              
+              <div className="volume-control">
+                <button 
+                  onClick={onToggleMute} 
+                  className="volume-toggle-btn"
+                  title={isMuted ? 'Включить звук' : 'Выключить звук'}
+                >
+                  <Icon 
+                    name={getVolumeIcon()} 
+                    type="png" 
+                    size={22} 
+                  />
+                </button>
+                
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={isMuted ? 0 : volume}
+                  onChange={onVolumeChange}
+                  className="volume-slider"
+                  title="Громкость"
+                />
+                
+                <span className="volume-percent">
+                  {isMuted ? '0%' : `${Math.round(volume * 100)}%`}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Модальные окна */}
+      <TrackInfoModal
+        track={currentTrack}
+        isOpen={isInfoModalOpen}
+        onClose={() => setIsInfoModalOpen(false)}
+        API_URL={API_URL}
+      />
+    </>
+  );
+}
+
+export default MainPlayer;
