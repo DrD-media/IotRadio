@@ -56,52 +56,93 @@ def load_playlists():
 class MP3Player:
     def __init__(self):
         self.current_file = None
-        self.file_handle = None
         self.is_playing = False
-        self.lock = threading.Lock()
+        self.converter_thread = None
+        self.converter = None
+        self.chunk_queue = queue.Queue(maxsize=200)  # Очередь для PCM чанков
         
     def play_file(self, filepath):
-        """Начинает воспроизведение MP3 файла"""
-        with self.lock:
-            if self.file_handle:
-                self.file_handle.close()
+        """Начинает воспроизведение MP3 файла с конвертацией в PCM"""
+        self.stop()
+        
+        try:
+            # Запускаем ffmpeg процесс для конвертации
+            import subprocess
             
-            try:
-                self.file_handle = open(filepath, 'rb')
-                self.current_file = filepath
-                self.is_playing = True
-                print(f"Начато воспроизведение: {os.path.basename(filepath)}")
-                return True
-            except Exception as e:
-                print(f"Ошибка открытия файла: {e}")
-                return False
+            cmd = [
+                'ffmpeg',
+                '-i', filepath,           # входной MP3
+                '-f', 's16le',            # выходной формат: PCM 16-bit little-endian
+                '-acodec', 'pcm_s16le',   # PCM кодек
+                '-ar', '44100',           # частота 44.1kHz
+                '-ac', '2',               # стерео
+                '-loglevel', 'error',     # только ошибки
+                '-'
+            ]
+            
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=4096
+            )
+            
+            # Запускаем поток для чтения данных
+            self.is_playing = True
+            self.current_file = filepath
+            
+            # Запускаем поток для чтения из stdout
+            self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
+            self.reader_thread.start()
+            
+            print(f"🎵 Начато воспроизведение: {os.path.basename(filepath)} (PCM 44.1kHz)")
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка открытия файла: {e}")
+            return False
     
-    def get_chunk(self, chunk_size=4096):
-        """Получает следующий чанк MP3 данных"""
-        with self.lock:
-            if not self.is_playing or not self.file_handle:
-                return None
-            
+    def _read_output(self):
+        """Читает PCM данные из stdout ffmpeg и кладет в очередь"""
+        while self.is_playing and self.process:
             try:
-                chunk = self.file_handle.read(chunk_size)
-                if not chunk:  # Конец файла
-                    self.is_playing = False
-                    self.file_handle.close()
-                    self.file_handle = None
-                    return None
-                return chunk
+                chunk = self.process.stdout.read(4096)
+                if not chunk:
+                    break
+                self.chunk_queue.put(chunk)
             except Exception as e:
-                print(f"Ошибка чтения файла: {e}")
-                self.is_playing = False
-                return None
+                print(f"Ошибка чтения: {e}")
+                break
+        
+        print(f"📢 Воспроизведение закончено: {self.current_file}")
+        self.is_playing = False
+    
+    def get_chunk(self, timeout=0.01):
+        """Получает следующий PCM чанк"""
+        if not self.is_playing:
+            return None
+        try:
+            return self.chunk_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
     
     def stop(self):
         """Останавливает воспроизведение"""
-        with self.lock:
-            self.is_playing = False
-            if self.file_handle:
-                self.file_handle.close()
-                self.file_handle = None
+        self.is_playing = False
+        
+        if hasattr(self, 'process') and self.process:
+            try:
+                self.process.terminate()
+                self.process = None
+            except:
+                pass
+        
+        # Очищаем очередь
+        while not self.chunk_queue.empty():
+            try:
+                self.chunk_queue.get_nowait()
+            except queue.Empty:
+                break
 
 # ============================================
 # КЛАСС ДЛЯ ЗАХВАТА МИКРОФОНА
@@ -111,7 +152,7 @@ class MicrophoneCapture:
         self.audio = None
         self.stream = None
         self.is_capturing = False
-        self.chunk_queue = queue.Queue(maxsize=50)
+        self.chunk_queue = queue.Queue(maxsize=100)
         self.lock = threading.Lock()
         
     def start_capture(self):
@@ -121,11 +162,20 @@ class MicrophoneCapture:
                 
             try:
                 self.audio = pyaudio.PyAudio()
+                
+                # Выводим список устройств для отладки
+                print("Доступные аудиоустройства:")
+                for i in range(self.audio.get_device_count()):
+                    info = self.audio.get_device_info_by_index(i)
+                    if info['maxInputChannels'] > 0:
+                        print(f"  [{i}] {info['name']} (входов: {info['maxInputChannels']})")
+                
                 self.stream = self.audio.open(
                     format=pyaudio.paInt16,
-                    channels=1,
-                    rate=44100,
+                    channels=1,          # Моно
+                    rate=44100,          # 44.1 kHz
                     input=True,
+                    input_device_index=None,  # None = устройство по умолчанию
                     frames_per_buffer=1024,
                     stream_callback=self.audio_callback
                 )
@@ -136,7 +186,7 @@ class MicrophoneCapture:
                 print(f"❌ Ошибка запуска микрофона: {e}")
                 
     def audio_callback(self, in_data, frame_count, time_info, status):
-        if self.is_capturing:
+        if self.is_capturing and in_data:
             try:
                 self.chunk_queue.put_nowait(in_data)
             except queue.Full:
@@ -205,55 +255,50 @@ class RadioBroadcaster:
         while self.is_broadcasting:
             try:
                 chunk_to_send = None
-                
-                # 1. Если играет трек - отправляем MP3
+
+                # 1. Если играет трек - отправляем PCM чанки
                 if radio_state['current_track'] and mp3_player.is_playing:
                     chunk = mp3_player.get_chunk()
                     if chunk:
                         chunk_to_send = chunk
                     else:
-                        # Трек закончился
-                        with state_lock:
-                            radio_state['current_track'] = None
-                            radio_state['is_live'] = False
-                
-                # 2. Если микрофон активен, но трека нет - отправляем микрофон
+                        # Нет данных - возможно трек закончился
+                        if not mp3_player.is_playing:
+                            with state_lock:
+                                radio_state['current_track'] = None
+                                radio_state['is_live'] = False
+
+                # 2. Если микрофон активен - отправляем реальные данные с микрофона
                 elif radio_state['mic_active']:
                     mic_chunk = mic.get_audio_chunk()
                     if mic_chunk:
-                        # Для теста просто отправляем PCM как есть (браузер не поймет)
-                        # В реальности нужно конвертировать в MP3
-                        # Пока генерируем тестовый тон
-                        import struct
-                        import math
-                        
-                        # Генерируем тестовый сигнал (синусоида 440Hz)
-                        sample_rate = 44100
-                        frequency = 440
-                        amplitude = 0.3
-                        
-                        samples = []
-                        for i in range(1024):
-                            t = float(i) / sample_rate
-                            sample = amplitude * math.sin(2 * math.pi * frequency * t)
-                            # Конвертируем в 16-bit PCM
-                            packed = struct.pack('<h', int(sample * 32767))
-                            samples.append(packed)
-                        
-                        chunk_to_send = b''.join(samples)
-                
+                        # Микрофон уже дает PCM 16-bit, 44100 Hz, моно
+                        # Для стерео нужно дублировать каналы
+                        if len(mic_chunk) > 0:
+                            # Конвертируем моно в стерео (повторяем каждый сэмпл)
+                            stereo_chunk = bytearray()
+                            for i in range(0, len(mic_chunk), 2):  # 2 байта = один сэмпл
+                                sample = mic_chunk[i:i+2]
+                                stereo_chunk.extend(sample)  # левый канал
+                                stereo_chunk.extend(sample)  # правый канал
+                            chunk_to_send = bytes(stereo_chunk)
+                        else:
+                            chunk_to_send = mic_chunk
+                    else:
+                        # Если данных с микрофона нет, отправляем тишину
+                        chunk_to_send = b'\x00\x00' * 1024
+
                 # 3. Если ничего нет - отправляем тишину
                 else:
-                    # PCM тишина
-                    chunk_to_send = b'\x00\x00' * 512
-                
+                    chunk_to_send = b'\x00\x00' * 1024  # PCM тишина
+
                 if chunk_to_send:
                     audio_queue.put(chunk_to_send)
-                    
+
             except Exception as e:
                 print(f"Ошибка вещания: {e}")
-            
-            time.sleep(0.01)
+
+            time.sleep(0.005)  # 5ms задержка
 
 broadcaster = RadioBroadcaster()
 
@@ -263,7 +308,7 @@ broadcaster = RadioBroadcaster()
 
 @app.route('/api/radio/stream')
 def radio_stream():
-    """ГЛАВНЫЙ ЭНДПОИНТ - аудиопоток для слушателей"""
+    """ГЛАВНЫЙ ЭНДПОИНТ - PCM аудиопоток для ESP32"""
     def generate():
         listener_id = id(threading.current_thread())
         
@@ -272,19 +317,17 @@ def radio_stream():
             radio_state['listeners_count'] = len(active_listeners)
             print(f"👂 Слушатель подключился. Всего: {radio_state['listeners_count']}")
         
-        # Запускаем вещание
         if not broadcaster.is_broadcasting:
             broadcaster.start_broadcast()
         
         try:
             while True:
                 try:
-                    # Пытаемся получить чанк из очереди
-                    chunk = audio_queue.get(timeout=1.0)
+                    chunk = audio_queue.get(timeout=0.5)
                     yield chunk
                 except queue.Empty:
-                    # Если нет данных, отправляем тишину (короткий MP3 фрейм)
-                    silence = b'\xff\xfb\x90\x44\x00\x00\x00\x00' * 25
+                    # PCM тишина (44100 Hz, 16-bit, стерео)
+                    silence = b'\x00\x00' * 1024
                     yield silence
                     
         except GeneratorExit:
@@ -295,14 +338,11 @@ def radio_stream():
     
     return Response(
         generate(),
-        mimetype='audio/mpeg',
+        mimetype='audio/L16',
         headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'Content-Type': 'audio/mpeg',
-            'Connection': 'keep-alive',
-            'Accept-Ranges': 'none'
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'audio/L16; rate=44100; channels=2',
+            'Connection': 'keep-alive'
         }
     )
 
