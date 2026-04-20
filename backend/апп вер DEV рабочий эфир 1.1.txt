@@ -249,24 +249,6 @@ class RadioBroadcaster:
         self.broadcast_thread.daemon = True
         self.broadcast_thread.start()
         print("🚀 Вещание запущено")
-    
-    def normalize_audio(self, stereo_chunk, gain=3.0):
-        """Усиливает аудио (чтобы голос был громче)"""
-        if not stereo_chunk:
-            return stereo_chunk
-        
-        samples = []
-        for i in range(0, len(stereo_chunk), 2):
-            sample = int.from_bytes(stereo_chunk[i:i+2], 'little', signed=True)
-            # Усиливаем и ограничиваем
-            sample = int(sample * gain)
-            sample = max(-32768, min(32767, sample))
-            samples.append(sample)
-        
-        result = bytearray()
-        for sample in samples:
-            result.extend(sample.to_bytes(2, 'little', signed=True))
-        return bytes(result)
         
     def _broadcast_loop(self):
         """Главный цикл вещания"""
@@ -289,16 +271,19 @@ class RadioBroadcaster:
                 # 2. Если микрофон активен - отправляем реальные данные с микрофона
                 elif radio_state['mic_active']:
                     mic_chunk = mic.get_audio_chunk()
-                    if mic_chunk and len(mic_chunk) > 0:
-                        # Конвертируем моно в стерео
-                        stereo_chunk = bytearray()
-                        for i in range(0, len(mic_chunk), 2):
-                            sample = mic_chunk[i:i+2]
-                            stereo_chunk.extend(sample)
-                            stereo_chunk.extend(sample)
-                        
-                        # Усиление голоса (gain=3.0)
-                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=3.0)
+                    if mic_chunk:
+                        # Микрофон уже дает PCM 16-bit, 44100 Hz, моно
+                        # Для стерео нужно дублировать каналы
+                        if len(mic_chunk) > 0:
+                            # Конвертируем моно в стерео (повторяем каждый сэмпл)
+                            stereo_chunk = bytearray()
+                            for i in range(0, len(mic_chunk), 2):  # 2 байта = один сэмпл
+                                sample = mic_chunk[i:i+2]
+                                stereo_chunk.extend(sample)  # левый канал
+                                stereo_chunk.extend(sample)  # правый канал
+                            chunk_to_send = bytes(stereo_chunk)
+                        else:
+                            chunk_to_send = mic_chunk
                     else:
                         # Если данных с микрофона нет, отправляем тишину
                         chunk_to_send = b'\x00\x00' * 1024
@@ -398,8 +383,7 @@ def radio_play(track_id):
 
         # ⭐ НОВОЕ: Добавляем маркер конца трека (специальная последовательность)
         # ESP32 будет искать этот маркер и переподключаться
-        # Вместо b'\xFF\xFF\xFF\xFF' используйте уникальную последовательность
-        end_marker = b'\xDE\xAD\xBE\xEF'  # "DEADBEEF" — редко встречается в аудио
+        end_marker = b'\xFF\xFF\xFF\xFF'  # 4 байта маркера
         audio_queue.put(end_marker)
     
     return jsonify({
@@ -419,17 +403,6 @@ def radio_mic():
             if action == 'on' and not radio_state['mic_active']:
                 threading.Thread(target=mic.start_capture, daemon=True).start()
                 radio_state['mic_active'] = True
-                
-                # ⭐ НОВОЕ: Отправляем тишину и маркер для синхронизации ESP32
-                silence_duration_ms = 500   # было 200
-                silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
-                silence_chunk = b'\x00\x00' * silence_samples
-                audio_queue.put(silence_chunk)
-                
-                end_marker = b'\xDE\xAD\xBE\xEF'
-                audio_queue.put(end_marker)
-                audio_queue.put(end_marker)  # второй маркер
-                
                 print("🎤 Микрофон включен")
                 
             elif action == 'off' and radio_state['mic_active']:
@@ -620,6 +593,7 @@ def debug_radio():
     </body>
     </html>
     ''')
+
 @app.route('/dj')
 def dj_panel():
     return render_template_string('''
@@ -656,6 +630,7 @@ def dj_panel():
     </body>
     </html>
     ''')
+
 if __name__ == '__main__':
     os.makedirs('music_files', exist_ok=True)
     os.makedirs('covers', exist_ok=True)
