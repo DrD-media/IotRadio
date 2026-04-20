@@ -308,6 +308,7 @@ class RadioBroadcaster:
                     chunk_to_send = b'\x00\x00' * 1024  # PCM тишина
 
                 if chunk_to_send:
+                    print(f"📊 Отправлен чанк: {len(chunk_to_send)} байт")
                     audio_queue.put(chunk_to_send)
 
             except Exception as e:
