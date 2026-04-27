@@ -297,8 +297,8 @@ class RadioBroadcaster:
                             stereo_chunk.extend(sample)
                             stereo_chunk.extend(sample)
                         
-                        # Усиление голоса (gain=3.0)
-                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=3.0)
+                        # Усиление голоса (gain=3.0) (временно отключаем gain 1.0)
+                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=0.9) # gain=1.0
                     else:
                         # Если данных с микрофона нет, отправляем тишину
                         chunk_to_send = b'\x00\x00' * 1024
@@ -422,7 +422,8 @@ def radio_mic():
                 radio_state['mic_active'] = True
                 
                 # ⭐ НОВОЕ: Отправляем тишину и маркер для синхронизации ESP32
-                silence_duration_ms = 500   # было 200
+                time.sleep(0.5)
+                silence_duration_ms = 1000   # было 200
                 silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
                 silence_chunk = b'\x00\x00' * silence_samples
                 audio_queue.put(silence_chunk)
@@ -436,6 +437,14 @@ def radio_mic():
             elif action == 'off' and radio_state['mic_active']:
                 threading.Thread(target=mic.stop_capture, daemon=True).start()
                 radio_state['mic_active'] = False
+
+                # ⭐ ДОБАВЬ: очищаем очередь от остатков микрофона
+                while not audio_queue.empty():
+                    try:
+                        audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
+
                 print("🎤 Микрофон выключен")
         
         return jsonify({'success': True, 'mic_active': radio_state['mic_active']})
