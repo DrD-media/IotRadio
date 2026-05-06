@@ -84,7 +84,7 @@ class MP3Player:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=4096
+                bufsize=8192   # было 4096
             )
             
             # Запускаем поток для чтения данных
@@ -309,6 +309,12 @@ class RadioBroadcaster:
 
                 if chunk_to_send:
                     print(f"📊 Отправлен чанк: {len(chunk_to_send)} байт")
+                    # ---
+                    # Добиваем до кратности 4 байтам (для стерео 16-bit)
+                    remainder = len(chunk_to_send) % 4
+                    if remainder != 0:
+                        chunk_to_send += b'\x00' * (4 - remainder)
+                    # ---
                     audio_queue.put(chunk_to_send)
 
             except Exception as e:
