@@ -29,6 +29,9 @@ function App() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('tracks'); // 'tracks' или 'playlists'
   
+  // ⭐ НОВОЕ СОСТОЯНИЕ ДЛЯ РЕЖИМА МИКШЕРА
+  const [mixerEnabled, setMixerEnabled] = useState(false);
+  
   // Текущий год для футера
   const currentYear = new Date().getFullYear();
 
@@ -47,7 +50,11 @@ function App() {
         
         setTracks(tracksRes.data);
         setPlaylists(playlistsRes.data);
-        setRadioStatus(statusRes.data);
+        setRadioStatus({
+          ...statusRes.data,
+          mixer_enabled: statusRes.data.mixer_enabled || false
+        });
+        setMixerEnabled(statusRes.data.mixer_enabled || false);
         setError(null);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -63,7 +70,12 @@ function App() {
     const interval = setInterval(async () => {
       try {
         const statusRes = await axios.get('/api/radio/status');
-        setRadioStatus(statusRes.data);
+        setRadioStatus(prev => ({
+          ...prev,
+          ...statusRes.data,
+          mixer_enabled: statusRes.data.mixer_enabled || false
+        }));
+        setMixerEnabled(statusRes.data.mixer_enabled || false);
       } catch (err) {
         console.error('Error updating status:', err);
       }
@@ -98,6 +110,19 @@ function App() {
     } catch (err) {
       console.error('Error toggling mic:', err);
       alert('Ошибка при управлении микрофоном');
+    }
+  };
+
+  // ⭐ НОВАЯ ФУНКЦИЯ ДЛЯ ПЕРЕКЛЮЧЕНИЯ РЕЖИМА МИКШЕРА
+  const toggleMixer = async () => {
+    try {
+      const newState = !mixerEnabled;
+      await axios.post('/api/radio/mixer', { enable: newState });
+      setMixerEnabled(newState);
+      console.log(`🎛️ Режим микшера: ${newState ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+    } catch (err) {
+      console.error('Error toggling mixer:', err);
+      alert('Ошибка при переключении режима микшера');
     }
   };
 
@@ -213,6 +238,16 @@ function App() {
                       isActive={radioStatus.mic_active} 
                       onToggle={toggleMic} 
                     />
+
+                    {/* ⭐ НОВАЯ КНОПКА МИКШЕРА */}
+                    <button 
+                      className={`mixer-btn ${mixerEnabled ? 'active' : ''}`}
+                      onClick={toggleMixer}
+                      title={mixerEnabled ? 'Выключить микширование (трек + микрофон)' : 'Включить микширование (трек + микрофон)'}
+                    >
+                      <Icon name="mixer" type="emoji" size={20} />
+                      {mixerEnabled ? '🎛️ Микширование ВКЛ' : '🎛️ Раздельный режим'}
+                    </button>
 
                     <button 
                       className="stop-btn"

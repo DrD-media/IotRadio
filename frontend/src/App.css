@@ -602,3 +602,30 @@
   top: 0 !important;
   left: 0 !important;
 }
+
+/* Кнопка микшера */
+.mixer-btn {
+  flex: 1;
+  background: rgba(155, 89, 182, 0.2);
+  border: 1px solid #9b59b6;
+  color: white;
+  padding: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.3s;
+}
+
+.mixer-btn:hover {
+  background: rgba(155, 89, 182, 0.3);
+  transform: translateY(-2px);
+}
+
+.mixer-btn.active {
+  background: rgba(46, 204, 113, 0.2);
+  border-color: #2ecc71;
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.3);
+}

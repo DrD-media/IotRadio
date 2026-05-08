@@ -30,7 +30,8 @@ radio_state = {
     'current_playlist': None,
     'mic_active': False,
     'listeners_count': 0,
-    'queue_size': 0
+    'queue_size': 0,
+    'mixer_enabled': False   # ← НОВЫЙ ФЛАГ ДЛЯ МИКШЕРА
 }
 
 state_lock = threading.Lock()
@@ -59,24 +60,23 @@ class MP3Player:
         self.is_playing = False
         self.converter_thread = None
         self.converter = None
-        self.chunk_queue = queue.Queue(maxsize=200)  # Очередь для PCM чанков
+        self.chunk_queue = queue.Queue(maxsize=200)
         
     def play_file(self, filepath):
         """Начинает воспроизведение MP3 файла с конвертацией в PCM"""
         self.stop()
         
         try:
-            # Запускаем ffmpeg процесс для конвертации
             import subprocess
             
             cmd = [
                 'ffmpeg',
-                '-i', filepath,           # входной MP3
-                '-f', 's16le',            # выходной формат: PCM 16-bit little-endian
-                '-acodec', 'pcm_s16le',   # PCM кодек
-                '-ar', '44100',           # частота 44.1kHz
-                '-ac', '2',               # стерео
-                '-loglevel', 'error',     # только ошибки
+                '-i', filepath,
+                '-f', 's16le',
+                '-acodec', 'pcm_s16le',
+                '-ar', '44100',
+                '-ac', '2',
+                '-loglevel', 'error',
                 '-'
             ]
             
@@ -84,14 +84,11 @@ class MP3Player:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                bufsize=8192   # было 4096
+                bufsize=8192
             )
             
-            # Запускаем поток для чтения данных
             self.is_playing = True
             self.current_file = filepath
-            
-            # Запускаем поток для чтения из stdout
             self.reader_thread = threading.Thread(target=self._read_output, daemon=True)
             self.reader_thread.start()
             
@@ -103,7 +100,6 @@ class MP3Player:
             return False
     
     def _read_output(self):
-        """Читает PCM данные из stdout ffmpeg и кладет в очередь"""
         while self.is_playing and self.process:
             try:
                 chunk = self.process.stdout.read(4096)
@@ -118,7 +114,6 @@ class MP3Player:
         self.is_playing = False
     
     def get_chunk(self, timeout=0.01):
-        """Получает следующий PCM чанк"""
         if not self.is_playing:
             return None
         try:
@@ -127,7 +122,6 @@ class MP3Player:
             return None
     
     def stop(self):
-        """Останавливает воспроизведение"""
         self.is_playing = False
         
         if hasattr(self, 'process') and self.process:
@@ -137,7 +131,6 @@ class MP3Player:
             except:
                 pass
         
-        # Очищаем очередь
         while not self.chunk_queue.empty():
             try:
                 self.chunk_queue.get_nowait()
@@ -163,7 +156,6 @@ class MicrophoneCapture:
             try:
                 self.audio = pyaudio.PyAudio()
                 
-                # Выводим список устройств для отладки
                 print("Доступные аудиоустройства:")
                 for i in range(self.audio.get_device_count()):
                     info = self.audio.get_device_info_by_index(i)
@@ -172,10 +164,10 @@ class MicrophoneCapture:
                 
                 self.stream = self.audio.open(
                     format=pyaudio.paInt16,
-                    channels=1,          # Моно
-                    rate=44100,          # 44.1 kHz
+                    channels=1,
+                    rate=44100,
                     input=True,
-                    input_device_index=None,  # None = устройство по умолчанию
+                    input_device_index=None,
                     frames_per_buffer=1024,
                     stream_callback=self.audio_callback
                 )
@@ -204,7 +196,6 @@ class MicrophoneCapture:
             self.is_capturing = False
             print("Останавливаем микрофон...")
             
-            # Очищаем очередь
             while not self.chunk_queue.empty():
                 try:
                     self.chunk_queue.get_nowait()
@@ -228,9 +219,60 @@ class MicrophoneCapture:
             
             print("✅ Микрофон остановлен")
 
-# Инициализация
 mic = MicrophoneCapture()
-mp3_player = MP3Player()
+
+# ============================================
+# КЛАСС AudioMixer (НОВЫЙ)
+# ============================================
+class AudioMixer:
+    def __init__(self, music_gain=0.6, mic_gain=0.8):
+        self.music_gain = music_gain
+        self.mic_gain = mic_gain
+        
+    def mono_to_stereo(self, mono_chunk):
+        """Конвертирует моно PCM в стерео"""
+        if not mono_chunk:
+            return None
+        stereo = bytearray()
+        for i in range(0, len(mono_chunk), 2):
+            sample = mono_chunk[i:i+2]
+            stereo.extend(sample)
+            stereo.extend(sample)
+        return bytes(stereo)
+    
+    def mix(self, music_chunk, mic_chunk):
+        """Микширует музыку и микрофон"""
+        if not music_chunk and not mic_chunk:
+            return b'\x00\x00' * 1024
+        
+        if not music_chunk and mic_chunk:
+            return self.mono_to_stereo(mic_chunk)
+        
+        if music_chunk and not mic_chunk:
+            return music_chunk
+        
+        # Микширование
+        mic_stereo = self.mono_to_stereo(mic_chunk)
+        if not mic_stereo:
+            return music_chunk
+        
+        # Выравниваем длину
+        min_len = min(len(music_chunk), len(mic_stereo))
+        
+        mixed = bytearray()
+        for i in range(0, min_len, 2):
+            music_sample = int.from_bytes(music_chunk[i:i+2], 'little', signed=True)
+            mic_sample = int.from_bytes(mic_stereo[i:i+2], 'little', signed=True)
+            
+            val = int(music_sample * self.music_gain + mic_sample * self.mic_gain)
+            val = max(-32768, min(32767, val))
+            mixed.extend(val.to_bytes(2, 'little', signed=True))
+        
+        # Добавляем остаток музыки
+        if len(music_chunk) > min_len:
+            mixed.extend(music_chunk[min_len:])
+        
+        return bytes(mixed)
 
 # ============================================
 # ПОТОК ВЕЩАНИЯ
@@ -245,20 +287,27 @@ class RadioBroadcaster:
             return
             
         self.is_broadcasting = True
-        self.broadcast_thread = threading.Thread(target=self._broadcast_loop)
+        
+        # Выбираем режим работы
+        if radio_state.get('mixer_enabled', False):
+            target = self._broadcast_loop_mixer
+            print("🎛️ Режим МИКШЕРА включён")
+        else:
+            target = self._broadcast_loop
+            print("🎛️ Режим РАЗДЕЛЬНОЙ работы включён")
+        
+        self.broadcast_thread = threading.Thread(target=target)
         self.broadcast_thread.daemon = True
         self.broadcast_thread.start()
         print("🚀 Вещание запущено")
     
     def normalize_audio(self, stereo_chunk, gain=3.0):
-        """Усиливает аудио (чтобы голос был громче)"""
         if not stereo_chunk:
             return stereo_chunk
         
         samples = []
         for i in range(0, len(stereo_chunk), 2):
             sample = int.from_bytes(stereo_chunk[i:i+2], 'little', signed=True)
-            # Усиливаем и ограничиваем
             sample = int(sample * gain)
             sample = max(-32768, min(32767, sample))
             samples.append(sample)
@@ -267,61 +316,89 @@ class RadioBroadcaster:
         for sample in samples:
             result.extend(sample.to_bytes(2, 'little', signed=True))
         return bytes(result)
-        
+    
+    # ========== ОРИГИНАЛЬНЫЙ ЦИКЛ (РАЗДЕЛЬНЫЙ) ==========
     def _broadcast_loop(self):
-        """Главный цикл вещания"""
+        """Главный цикл вещания (оригинальный)"""
         while self.is_broadcasting:
             try:
                 chunk_to_send = None
 
-                # 1. Если играет трек - отправляем PCM чанки
                 if radio_state['current_track'] and mp3_player.is_playing:
                     chunk = mp3_player.get_chunk()
                     if chunk:
                         chunk_to_send = chunk
                     else:
-                        # Нет данных - возможно трек закончился
                         if not mp3_player.is_playing:
                             with state_lock:
                                 radio_state['current_track'] = None
                                 radio_state['is_live'] = False
 
-                # 2. Если микрофон активен - отправляем реальные данные с микрофона
                 elif radio_state['mic_active']:
                     mic_chunk = mic.get_audio_chunk()
                     if mic_chunk and len(mic_chunk) > 0:
-                        # Конвертируем моно в стерео
                         stereo_chunk = bytearray()
                         for i in range(0, len(mic_chunk), 2):
                             sample = mic_chunk[i:i+2]
                             stereo_chunk.extend(sample)
                             stereo_chunk.extend(sample)
-                        
-                        # Усиление голоса (gain=3.0) (временно отключаем gain 1.0)
-                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=0.9) # gain=1.0
+                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=0.9)
                     else:
-                        # Если данных с микрофона нет, отправляем тишину
                         chunk_to_send = b'\x00\x00' * 1024
-
-                # 3. Если ничего нет - отправляем тишину
                 else:
-                    chunk_to_send = b'\x00\x00' * 1024  # PCM тишина
+                    chunk_to_send = b'\x00\x00' * 1024
 
                 if chunk_to_send:
-                    print(f"📊 Отправлен чанк: {len(chunk_to_send)} байт")
-                    # ---
-                    # Добиваем до кратности 4 байтам (для стерео 16-bit)
                     remainder = len(chunk_to_send) % 4
                     if remainder != 0:
                         chunk_to_send += b'\x00' * (4 - remainder)
-                    # ---
                     audio_queue.put(chunk_to_send)
 
             except Exception as e:
                 print(f"Ошибка вещания: {e}")
 
-            time.sleep(0.005)  # 5ms задержка
+            time.sleep(0.005)
+    
+    # ========== НОВЫЙ ЦИКЛ (МИКШИРОВАНИЕ) ==========
+    def _broadcast_loop_mixer(self):
+        """Цикл вещания с микшированием (НОВЫЙ)"""
+        mixer = AudioMixer(music_gain=0.6, mic_gain=1.2)
+        
+        while self.is_broadcasting:
+            try:
+                music_chunk = None
+                mic_chunk = None
+                
+                # ⭐ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: получаем чанк даже если трек не играет
+                if radio_state['current_track']:
+                    chunk = mp3_player.get_chunk()
+                    if chunk:
+                        music_chunk = chunk
+                    else:
+                        # Если чанков нет, возможно трек закончился
+                        if not mp3_player.is_playing:
+                            with state_lock:
+                                radio_state['current_track'] = None
+                                radio_state['is_live'] = False
+                
+                if radio_state['mic_active']:
+                    mic_chunk = mic.get_audio_chunk()
+                
+                chunk_to_send = mixer.mix(music_chunk, mic_chunk)
+                
+                # Добиваем до кратности 4
+                remainder = len(chunk_to_send) % 4
+                if remainder != 0:
+                    chunk_to_send += b'\x00' * (4 - remainder)
+                
+                audio_queue.put(chunk_to_send)
+                
+            except Exception as e:
+                print(f"Ошибка вещания (микшер): {e}")
+            
+            time.sleep(0.005)
 
+mp3_player = MP3Player()
 broadcaster = RadioBroadcaster()
 
 # ============================================
@@ -330,7 +407,6 @@ broadcaster = RadioBroadcaster()
 
 @app.route('/api/radio/stream')
 def radio_stream():
-    """ГЛАВНЫЙ ЭНДПОИНТ - PCM аудиопоток для ESP32"""
     def generate():
         listener_id = id(threading.current_thread())
         
@@ -348,7 +424,6 @@ def radio_stream():
                     chunk = audio_queue.get(timeout=0.5)
                     yield chunk
                 except queue.Empty:
-                    # PCM тишина (44100 Hz, 16-bit, стерео)
                     silence = b'\x00\x00' * 1024
                     yield silence
                     
@@ -370,7 +445,6 @@ def radio_stream():
 
 @app.route('/api/radio/play/<int:track_id>', methods=['POST'])
 def radio_play(track_id):
-    """DJ ставит трек в эфир"""
     tracks = load_tracks_data()
     track = next((t for t in tracks.get('tracks', []) if t['id'] == track_id), None)
     
@@ -380,6 +454,22 @@ def radio_play(track_id):
     # Останавливаем текущее воспроизведение
     mp3_player.stop()
     
+    # Очищаем очередь от старых данных
+    while not audio_queue.empty():
+        try:
+            audio_queue.get_nowait()
+        except queue.Empty:
+            break
+    
+    # ⭐ КРИТИЧЕСКИ ВАЖНО: отправляем тишину и маркер для сброса ESP32
+    silence_duration_ms = 200
+    silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
+    silence_chunk = b'\x00\x00' * silence_samples
+    audio_queue.put(silence_chunk)
+    
+    end_marker = b'\xDE\xAD\xBE\xEF'
+    audio_queue.put(end_marker)
+    
     # Начинаем новый трек
     filepath = os.path.join(BASE_DIR, 'music_files', track['filename'])
     if mp3_player.play_file(filepath):
@@ -387,27 +477,9 @@ def radio_play(track_id):
             radio_state['current_track'] = track
             radio_state['is_live'] = True
         
-        # Запускаем вещание
+        # Запускаем вещание (если ещё не запущено)
         if not broadcaster.is_broadcasting:
             broadcaster.start_broadcast()
-        
-        # Очищаем очередь от старых данных
-        while not audio_queue.empty():
-            try:
-                audio_queue.get_nowait()
-            except queue.Empty:
-                break
-        # ⭐ НОВОЕ: Отправляем тишину для сброса ESP32 ⭐ УВЕЛИЧЕННАЯ тишина (200 мс вместо 50)
-        silence_duration_ms = 200
-        silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
-        silence_chunk = b'\x00\x00' * silence_samples
-        audio_queue.put(silence_chunk)
-
-        # ⭐ НОВОЕ: Добавляем маркер конца трека (специальная последовательность)
-        # ESP32 будет искать этот маркер и переподключаться
-        # Вместо b'\xFF\xFF\xFF\xFF' используйте уникальную последовательность
-        end_marker = b'\xDE\xAD\xBE\xEF'  # "DEADBEEF" — редко встречается в аудио
-        audio_queue.put(end_marker)
     
     return jsonify({
         'success': True,
@@ -417,7 +489,6 @@ def radio_play(track_id):
 
 @app.route('/api/radio/mic', methods=['POST'])
 def radio_mic():
-    """Включение/выключение микрофона"""
     try:
         data = request.json
         action = data.get('action')
@@ -427,16 +498,15 @@ def radio_mic():
                 threading.Thread(target=mic.start_capture, daemon=True).start()
                 radio_state['mic_active'] = True
                 
-                # ⭐ НОВОЕ: Отправляем тишину и маркер для синхронизации ESP32
                 time.sleep(0.5)
-                silence_duration_ms = 1000   # было 200
+                silence_duration_ms = 1000
                 silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
                 silence_chunk = b'\x00\x00' * silence_samples
                 audio_queue.put(silence_chunk)
                 
                 end_marker = b'\xDE\xAD\xBE\xEF'
                 audio_queue.put(end_marker)
-                audio_queue.put(end_marker)  # второй маркер
+                audio_queue.put(end_marker)
                 
                 print("🎤 Микрофон включен")
                 
@@ -444,7 +514,6 @@ def radio_mic():
                 threading.Thread(target=mic.stop_capture, daemon=True).start()
                 radio_state['mic_active'] = False
 
-                # ⭐ ДОБАВЬ: очищаем очередь от остатков микрофона
                 while not audio_queue.empty():
                     try:
                         audio_queue.get_nowait()
@@ -459,9 +528,57 @@ def radio_mic():
         print(f"Ошибка в radio_mic: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/radio/mixer', methods=['POST'])
+def radio_mixer():
+    """Включение/выключение режима микширования"""
+    try:
+        data = request.json
+        enable = data.get('enable', False)
+        
+        with state_lock:
+            radio_state['mixer_enabled'] = enable
+        
+        # Перезапускаем вещание с новым режимом
+        old_broadcasting = broadcaster.is_broadcasting
+        broadcaster.is_broadcasting = False
+        time.sleep(0.2)  # Даём время на остановку
+        
+        broadcaster.is_broadcasting = True
+        if enable:
+            target = broadcaster._broadcast_loop_mixer
+        else:
+            target = broadcaster._broadcast_loop
+        
+        broadcaster.broadcast_thread = threading.Thread(target=target)
+        broadcaster.broadcast_thread.daemon = True
+        broadcaster.broadcast_thread.start()
+        
+        # Если был трек — очищаем очередь и переотправляем маркер
+        if radio_state['current_track']:
+            while not audio_queue.empty():
+                try:
+                    audio_queue.get_nowait()
+                except queue.Empty:
+                    break
+            
+            silence_duration_ms = 200
+            silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
+            silence_chunk = b'\x00\x00' * silence_samples
+            audio_queue.put(silence_chunk)
+            
+            end_marker = b'\xDE\xAD\xBE\xEF'
+            audio_queue.put(end_marker)
+        
+        print(f"🎛️ Режим микширования: {'ВКЛЮЧЕН' if enable else 'ВЫКЛЮЧЕН'}")
+        
+        return jsonify({'success': True, 'mixer_enabled': enable})
+        
+    except Exception as e:
+        print(f"Ошибка в radio_mixer: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/radio/status')
 def radio_status():
-    """Статус радио для DJ"""
     with state_lock:
         with listeners_lock:
             return jsonify({
@@ -470,19 +587,18 @@ def radio_status():
                 'current_playlist': radio_state['current_playlist'],
                 'mic_active': radio_state['mic_active'],
                 'listeners': len(active_listeners),
-                'queue_size': audio_queue.qsize()
+                'queue_size': audio_queue.qsize(),
+                'mixer_enabled': radio_state.get('mixer_enabled', False)
             })
 
 @app.route('/api/radio/stop', methods=['POST'])
 def radio_stop():
-    """Остановить эфир"""
     mp3_player.stop()
     with state_lock:
         radio_state['is_live'] = False
         radio_state['current_track'] = None
         radio_state['current_playlist'] = None
     
-    # Очищаем очередь
     while not audio_queue.empty():
         try:
             audio_queue.get_nowait()
@@ -520,122 +636,101 @@ def debug_radio():
         <title>📻 Техническая страница радио</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            /* ... CSS код из предыдущего сообщения ... */
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+            .debug-container {
+                background: rgba(255, 255, 255, 0.05);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 30px;
+                padding: 30px;
+                width: 100%;
+                max-width: 600px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            }
+            h1 { color: white; font-size: 1.8rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+            .badge { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; }
+            .stream-info { background: rgba(0, 0, 0, 0.3); border-radius: 15px; padding: 15px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.1); }
+            .url-box { background: rgba(255, 255, 255, 0.1); padding: 12px; border-radius: 10px; font-family: monospace; font-size: 0.85rem; color: #4ecdc4; word-break: break-all; margin: 10px 0; }
+            .status { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: rgba(78, 205, 196, 0.1); border: 1px solid #4ecdc4; }
+            .live { color: #4ecdc4; font-weight: bold; animation: blink 1s infinite; }
+            @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+            audio { width: 100%; margin: 20px 0; border-radius: 30px; }
+            .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }
+            .stat-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 15px; text-align: center; }
+            .stat-label { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); margin-bottom: 5px; }
+            .stat-value { font-size: 1.8rem; font-weight: bold; color: #4ecdc4; }
+            .now-playing { background: rgba(102, 126, 234, 0.1); border-radius: 15px; padding: 15px; margin: 20px 0; border-left: 4px solid #667eea; }
+            .now-playing h3 { font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 8px; }
+            .now-playing .title { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+            .refresh-btn { width: 100%; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 12px; border-radius: 30px; cursor: pointer; font-size: 1rem; transition: all 0.3s; }
+            .refresh-btn:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+            .footer-note { margin-top: 20px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.3); text-align: center; }
+            .mic-indicator { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-top: 10px; }
+            .mic-on { background: rgba(78, 205, 196, 0.2); border: 1px solid #4ecdc4; color: #4ecdc4; }
+            .mic-off { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; }
         </style>
     </head>
     <body>
         <div class="debug-container">
             <h1><span>📻</span> Техническая страница радио</h1>
             <div class="badge">🔧 DEBUG MODE</div>
-            
             <div class="stream-info">
                 <div style="margin-bottom: 10px;">🎵 Прямой эфир</div>
                 <div class="url-box" id="streamUrl"></div>
-                <div class="status" id="streamStatus">
-                    <span>⏳</span>
-                    <span>Проверка соединения...</span>
-                </div>
+                <div class="status" id="streamStatus"><span>⏳</span><span>Проверка соединения...</span></div>
             </div>
-            
-            <audio id="audioPlayer" controls autoplay>
-                <source src="/api/radio/stream" type="audio/mpeg">
-                Ваш браузер не поддерживает аудио элемент.
-            </audio>
-            
-            <div class="stats-grid" id="stats">
-                <div class="stat-card">
-                    <div class="stat-label">Слушателей</div>
-                    <div class="stat-value" id="listeners">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Буфер</div>
-                    <div class="stat-value" id="buffer">0</div>
-                </div>
+            <audio id="audioPlayer" controls autoplay><source src="/api/radio/stream" type="audio/L16"></audio>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">Слушателей</div><div class="stat-value" id="listeners">0</div></div>
+                <div class="stat-card"><div class="stat-label">Буфер</div><div class="stat-value" id="buffer">0</div></div>
             </div>
-            
-            <div class="now-playing" id="nowPlaying">
-                <h3>🎵 Сейчас в эфире</h3>
-                <div class="title">Загрузка...</div>
-                <div class="artist"></div>
-                <div id="micStatus"></div>
-            </div>
-            
-            <button class="refresh-btn" onclick="refreshStats()">
-                🔄 Обновить информацию
-            </button>
-            
-            <div class="footer-note">
-                Техническая страница для отладки радио-потока
-            </div>
+            <div class="now-playing" id="nowPlaying"><h3>🎵 Сейчас в эфире</h3><div class="title">Загрузка...</div><div class="artist"></div><div id="micStatus"></div></div>
+            <button class="refresh-btn" onclick="refreshStats()">🔄 Обновить информацию</button>
+            <div class="footer-note">Техническая страница для отладки радио-потока</div>
         </div>
-        
         <script>
             async function refreshStats() {
                 try {
                     const response = await fetch('/api/radio/status');
                     const data = await response.json();
-                    
                     document.getElementById('listeners').textContent = data.listeners || 0;
                     document.getElementById('buffer').textContent = data.queue_size || 0;
-                    
                     const nowPlayingDiv = document.getElementById('nowPlaying');
                     if (data.current_track) {
-                        nowPlayingDiv.innerHTML = `
-                            <h3>🎵 Сейчас в эфире</h3>
-                            <div class="title">${data.current_track.title || 'Неизвестно'}</div>
-                            <div class="artist">${data.current_track.artist || 'Неизвестный исполнитель'}</div>
-                            <div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">
-                                ${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}
-                            </div>
-                        `;
+                        nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.current_track.title || 'Неизвестно'}</div><div class="artist">${data.current_track.artist || 'Неизвестный исполнитель'}</div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
                     } else {
-                        nowPlayingDiv.innerHTML = `
-                            <h3>🎵 Сейчас в эфире</h3>
-                            <div class="title">${data.mic_active ? 'Микрофон активен' : 'Эфир не активен'}</div>
-                            <div class="artist"></div>
-                            <div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">
-                                ${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}
-                            </div>
-                        `;
+                        nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.mic_active ? 'Микрофон активен' : 'Эфир не активен'}</div><div class="artist"></div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
                     }
-                    
                     const statusDiv = document.getElementById('streamStatus');
                     if (data.is_live || data.mic_active) {
-                        statusDiv.innerHTML = `
-                            <span>🔴</span>
-                            <span class="live">Поток активен</span>
-                        `;
+                        statusDiv.innerHTML = '<span>🔴</span><span class="live">Поток активен</span>';
                     } else {
-                        statusDiv.innerHTML = `
-                            <span>⭕</span>
-                            <span style="color: #ff6b6b;">Поток остановлен</span>
-                        `;
+                        statusDiv.innerHTML = '<span>⭕</span><span style="color: #ff6b6b;">Поток остановлен</span>';
                     }
-                    
-                } catch (error) {
-                    console.error('Ошибка:', error);
-                }
+                } catch (error) { console.error('Ошибка:', error); }
             }
-            
             window.onload = function() {
-                const streamUrl = window.location.origin + '/api/radio/stream';
-                document.getElementById('streamUrl').textContent = streamUrl;
+                document.getElementById('streamUrl').textContent = window.location.origin + '/api/radio/stream';
                 refreshStats();
                 setInterval(refreshStats, 2000);
             };
-            
             document.getElementById('audioPlayer').addEventListener('error', function(e) {
-                console.error('Ошибка аудио:', e);
-                const statusDiv = document.getElementById('streamStatus');
-                statusDiv.innerHTML = `
-                    <span>❌</span>
-                    <span style="color: #ff6b6b;">Ошибка подключения</span>
-                `;
+                document.getElementById('streamStatus').innerHTML = '<span>❌</span><span style="color: #ff6b6b;">Ошибка подключения</span>';
             });
         </script>
     </body>
     </html>
     ''')
+
 @app.route('/dj')
 def dj_panel():
     return render_template_string('''
@@ -643,35 +738,109 @@ def dj_panel():
     <html>
     <head>
         <title>DJ Panel</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
             .container { max-width: 800px; margin: 0 auto; }
-            button { background: #e94560; color: white; border: none; padding: 10px; margin: 5px; cursor: pointer; }
+            .status { background: #16213e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+            .track-list { background: #0f3460; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+            .button-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+            button { background: #e94560; color: white; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 5px; }
+            button:hover { background: #ff6b6b; }
+            .mic-btn { background: #f39c12; }
+            .mixer-btn { background: #9b59b6; }
+            .mixer-btn.active { background: #2ecc71; }
+            .stop-btn { background: #e74c3c; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🎧 DJ Panel</h1>
-            <div id="status">Loading...</div>
-            <button onclick="fetch('/api/radio/mic', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'on'})})">Mic ON</button>
-            <button onclick="fetch('/api/radio/mic', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'off'})})">Mic OFF</button>
-            <button onclick="fetch('/api/radio/stop', {method:'POST'})">STOP</button>
+            <div class="status" id="status">Loading...</div>
+            
+            <div class="button-group">
+                <button id="micBtn" class="mic-btn">🎤 Включить микрофон</button>
+                <button id="mixerBtn" class="mixer-btn">🎛️ Режим: РАЗДЕЛЬНЫЙ</button>
+                <button id="stopBtn" class="stop-btn">⏹ Остановить эфир</button>
+            </div>
+            
+            <div class="track-list">
+                <h2>Available Tracks</h2>
+                <div id="tracks"></div>
+            </div>
         </div>
         <script>
-            setInterval(async() => {
+            let micActive = false;
+            let mixerEnabled = false;
+            
+            async function updateStatus() {
                 const res = await fetch('/api/radio/status');
                 const data = await res.json();
                 document.getElementById('status').innerHTML = `
-                    <p>Live: ${data.is_live}</p>
-                    <p>Mic: ${data.mic_active}</p>
-                    <p>Listeners: ${data.listeners}</p>
-                    <p>Track: ${data.current_track?.title || 'None'}</p>
+                    <p>🎵 Трек: ${data.current_track ? data.current_track.title : 'None'}</p>
+                    <p>🎤 Микрофон: ${data.mic_active ? 'ON' : 'OFF'}</p>
+                    <p>👥 Слушателей: ${data.listeners}</p>
+                    <p>🎛️ Режим: ${data.mixer_enabled ? 'МИКШИРОВАНИЕ' : 'РАЗДЕЛЬНЫЙ'}</p>
                 `;
-            }, 1000);
+                micActive = data.mic_active;
+                mixerEnabled = data.mixer_enabled;
+                
+                const micBtn = document.getElementById('micBtn');
+                micBtn.textContent = micActive ? '🔴 Выключить микрофон' : '🎤 Включить микрофон';
+                
+                const mixerBtn = document.getElementById('mixerBtn');
+                mixerBtn.textContent = mixerEnabled ? '🎛️ Режим: МИКШИРОВАНИЕ' : '🎛️ Режим: РАЗДЕЛЬНЫЙ';
+                mixerBtn.classList.toggle('active', mixerEnabled);
+            }
+            
+            async function loadTracks() {
+                const res = await fetch('/api/tracks');
+                const tracks = await res.json();
+                document.getElementById('tracks').innerHTML = tracks.map(track => `<button onclick="playTrack(${track.id})">${track.title} - ${track.artist}</button>`).join('');
+            }
+            
+            async function playTrack(id) {
+                await fetch(`/api/radio/play/${id}`, {method: 'POST'});
+                updateStatus();
+            }
+            
+            async function toggleMic() {
+                const action = micActive ? 'off' : 'on';
+                await fetch('/api/radio/mic', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action})
+                });
+                updateStatus();
+            }
+            
+            async function toggleMixer() {
+                const enable = !mixerEnabled;
+                await fetch('/api/radio/mixer', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enable})
+                });
+                updateStatus();
+            }
+            
+            async function stopRadio() {
+                await fetch('/api/radio/stop', {method: 'POST'});
+                updateStatus();
+            }
+            
+            document.getElementById('micBtn').addEventListener('click', toggleMic);
+            document.getElementById('mixerBtn').addEventListener('click', toggleMixer);
+            document.getElementById('stopBtn').addEventListener('click', stopRadio);
+            
+            loadTracks();
+            updateStatus();
+            setInterval(updateStatus, 2000);
         </script>
     </body>
     </html>
     ''')
+
 if __name__ == '__main__':
     os.makedirs('music_files', exist_ok=True)
     os.makedirs('covers', exist_ok=True)
@@ -682,6 +851,7 @@ if __name__ == '__main__':
     print("📻 Stream URL: http://localhost:5000/api/radio/stream")
     print("🎚️  DJ Panel: http://localhost:5000/dj")
     print("🔧 Debug Page: http://localhost:5000/debug/radio")
+    print("🎛️ Mixer mode: DISABLED by default")
     print("="*50)
     
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
