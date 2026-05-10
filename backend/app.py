@@ -1,4 +1,4 @@
-from flask import Flask, send_file, jsonify, request, Response, render_template_string
+from flask import Flask, send_file, jsonify, request, Response, render_template
 from flask_cors import CORS
 import os
 import json
@@ -147,7 +147,48 @@ class MicrophoneCapture:
         self.is_capturing = False
         self.chunk_queue = queue.Queue(maxsize=100)
         self.lock = threading.Lock()
+        # ⭐ НОВЫЕ ПАРАМЕТРЫ ДЛЯ ДИНАМИЧЕСКОГО УСИЛЕНИЯ
+        self.dynamic_gain = 1.0          # текущий коэффициент усиления
+        self.target_peak = 800           # целевой пик (можно менять 600-1000)
+        self.smoothing = 0.95            # сглаживание (0.9-0.99)
         
+    def _apply_dynamic_gain(self, chunk):
+        """Динамическая регулировка усиления (не нормализация каждого чанка)"""
+        if not chunk or len(chunk) == 0:
+            return chunk
+        
+        # Находим максимальный сэмпл в этом чанке
+        max_sample = 0
+        for i in range(0, len(chunk), 2):
+            sample = int.from_bytes(chunk[i:i+2], 'little', signed=True)
+            if abs(sample) > max_sample:
+                max_sample = abs(sample)
+        
+        # Динамически подстраиваем усиление
+        if max_sample > self.target_peak:
+            # Сигнал слишком громкий — быстро уменьшаем усиление
+            correction = self.target_peak / max_sample
+            self.dynamic_gain = self.dynamic_gain * correction * 0.5 + self.dynamic_gain * 0.5
+        elif max_sample < self.target_peak * 0.5 and max_sample > 10:
+            # Сигнал слишком тихий — медленно увеличиваем усиление
+            correction = self.target_peak / max_sample
+            self.dynamic_gain = self.dynamic_gain * correction * 0.1 + self.dynamic_gain * 0.9
+        
+        # Ограничиваем коэффициент (не выше 3.0, не ниже 0.3)
+        self.dynamic_gain = max(0.3, min(3.0, self.dynamic_gain))
+        
+        # Применяем усиление
+        if abs(self.dynamic_gain - 1.0) > 0.05:
+            amplified = bytearray()
+            for i in range(0, len(chunk), 2):
+                sample = int.from_bytes(chunk[i:i+2], 'little', signed=True)
+                sample = int(sample * self.dynamic_gain)
+                sample = max(-32767, min(32767, sample))
+                amplified.extend(sample.to_bytes(2, 'little', signed=True))
+            return bytes(amplified)
+        
+        return chunk
+    
     def start_capture(self):
         with self.lock:
             if self.is_capturing:
@@ -187,7 +228,20 @@ class MicrophoneCapture:
     
     def get_audio_chunk(self):
         try:
-            return self.chunk_queue.get_nowait()
+            chunk = self.chunk_queue.get_nowait()
+            # Применяем динамическое усиление
+            chunk = self._apply_dynamic_gain(chunk)
+            
+            # ⭐ Отладочный вывод уровня сигнала и усиления
+            if chunk and len(chunk) > 0:
+                max_sample = 0
+                for i in range(0, len(chunk), 2):
+                    sample = int.from_bytes(chunk[i:i+2], 'little', signed=True)
+                    if abs(sample) > max_sample:
+                        max_sample = abs(sample)
+                print(f"🎤 Уровень: {max_sample} | Gain: {self.dynamic_gain:.2f}")
+            
+            return chunk
         except queue.Empty:
             return None
     
@@ -195,6 +249,9 @@ class MicrophoneCapture:
         with self.lock:
             self.is_capturing = False
             print("Останавливаем микрофон...")
+            
+            # Сбрасываем усиление при остановке
+            self.dynamic_gain = 1.0
             
             while not self.chunk_queue.empty():
                 try:
@@ -225,7 +282,7 @@ mic = MicrophoneCapture()
 # КЛАСС AudioMixer (НОВЫЙ)
 # ============================================
 class AudioMixer:
-    def __init__(self, music_gain=0.6, mic_gain=0.8):
+    def __init__(self, music_gain=0.6, mic_gain=1.0):
         self.music_gain = music_gain
         self.mic_gain = mic_gain
         
@@ -337,12 +394,13 @@ class RadioBroadcaster:
                 elif radio_state['mic_active']:
                     mic_chunk = mic.get_audio_chunk()
                     if mic_chunk and len(mic_chunk) > 0:
+                        # Конвертируем моно в стерео (без дополнительной нормализации)
                         stereo_chunk = bytearray()
                         for i in range(0, len(mic_chunk), 2):
                             sample = mic_chunk[i:i+2]
                             stereo_chunk.extend(sample)
                             stereo_chunk.extend(sample)
-                        chunk_to_send = self.normalize_audio(bytes(stereo_chunk), gain=0.9)
+                        chunk_to_send = bytes(stereo_chunk)
                     else:
                         chunk_to_send = b'\x00\x00' * 1024
                 else:
@@ -362,14 +420,14 @@ class RadioBroadcaster:
     # ========== НОВЫЙ ЦИКЛ (МИКШИРОВАНИЕ) ==========
     def _broadcast_loop_mixer(self):
         """Цикл вещания с микшированием (НОВЫЙ)"""
-        mixer = AudioMixer(music_gain=0.6, mic_gain=1.2)
+        mixer = AudioMixer(music_gain=0.6, mic_gain=1.0)
         
         while self.is_broadcasting:
             try:
                 music_chunk = None
                 mic_chunk = None
                 
-                # ⭐ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: получаем чанк даже если трек не играет
+                # Получаем музыку, если трек выбран
                 if radio_state['current_track']:
                     chunk = mp3_player.get_chunk()
                     if chunk:
@@ -461,7 +519,7 @@ def radio_play(track_id):
         except queue.Empty:
             break
     
-    # ⭐ КРИТИЧЕСКИ ВАЖНО: отправляем тишину и маркер для сброса ESP32
+    # Отправляем тишину и маркер для сброса ESP32
     silence_duration_ms = 200
     silence_samples = int(44100 * silence_duration_ms / 1000) * 2 * 2
     silence_chunk = b'\x00\x00' * silence_samples
@@ -541,7 +599,7 @@ def radio_mixer():
         # Перезапускаем вещание с новым режимом
         old_broadcasting = broadcaster.is_broadcasting
         broadcaster.is_broadcasting = False
-        time.sleep(0.2)  # Даём время на остановку
+        time.sleep(0.2)
         
         broadcaster.is_broadcasting = True
         if enable:
@@ -629,217 +687,11 @@ def get_cover(filename):
 # ============================================
 @app.route('/debug/radio')
 def debug_radio():
-    return render_template_string('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>📻 Техническая страница радио</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-            .debug-container {
-                background: rgba(255, 255, 255, 0.05);
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 30px;
-                padding: 30px;
-                width: 100%;
-                max-width: 600px;
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-            }
-            h1 { color: white; font-size: 1.8rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-            .badge { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; }
-            .stream-info { background: rgba(0, 0, 0, 0.3); border-radius: 15px; padding: 15px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.1); }
-            .url-box { background: rgba(255, 255, 255, 0.1); padding: 12px; border-radius: 10px; font-family: monospace; font-size: 0.85rem; color: #4ecdc4; word-break: break-all; margin: 10px 0; }
-            .status { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: rgba(78, 205, 196, 0.1); border: 1px solid #4ecdc4; }
-            .live { color: #4ecdc4; font-weight: bold; animation: blink 1s infinite; }
-            @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-            audio { width: 100%; margin: 20px 0; border-radius: 30px; }
-            .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }
-            .stat-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 15px; text-align: center; }
-            .stat-label { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); margin-bottom: 5px; }
-            .stat-value { font-size: 1.8rem; font-weight: bold; color: #4ecdc4; }
-            .now-playing { background: rgba(102, 126, 234, 0.1); border-radius: 15px; padding: 15px; margin: 20px 0; border-left: 4px solid #667eea; }
-            .now-playing h3 { font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 8px; }
-            .now-playing .title { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
-            .refresh-btn { width: 100%; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 12px; border-radius: 30px; cursor: pointer; font-size: 1rem; transition: all 0.3s; }
-            .refresh-btn:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
-            .footer-note { margin-top: 20px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.3); text-align: center; }
-            .mic-indicator { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-top: 10px; }
-            .mic-on { background: rgba(78, 205, 196, 0.2); border: 1px solid #4ecdc4; color: #4ecdc4; }
-            .mic-off { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; }
-        </style>
-    </head>
-    <body>
-        <div class="debug-container">
-            <h1><span>📻</span> Техническая страница радио</h1>
-            <div class="badge">🔧 DEBUG MODE</div>
-            <div class="stream-info">
-                <div style="margin-bottom: 10px;">🎵 Прямой эфир</div>
-                <div class="url-box" id="streamUrl"></div>
-                <div class="status" id="streamStatus"><span>⏳</span><span>Проверка соединения...</span></div>
-            </div>
-            <audio id="audioPlayer" controls autoplay><source src="/api/radio/stream" type="audio/L16"></audio>
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">Слушателей</div><div class="stat-value" id="listeners">0</div></div>
-                <div class="stat-card"><div class="stat-label">Буфер</div><div class="stat-value" id="buffer">0</div></div>
-            </div>
-            <div class="now-playing" id="nowPlaying"><h3>🎵 Сейчас в эфире</h3><div class="title">Загрузка...</div><div class="artist"></div><div id="micStatus"></div></div>
-            <button class="refresh-btn" onclick="refreshStats()">🔄 Обновить информацию</button>
-            <div class="footer-note">Техническая страница для отладки радио-потока</div>
-        </div>
-        <script>
-            async function refreshStats() {
-                try {
-                    const response = await fetch('/api/radio/status');
-                    const data = await response.json();
-                    document.getElementById('listeners').textContent = data.listeners || 0;
-                    document.getElementById('buffer').textContent = data.queue_size || 0;
-                    const nowPlayingDiv = document.getElementById('nowPlaying');
-                    if (data.current_track) {
-                        nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.current_track.title || 'Неизвестно'}</div><div class="artist">${data.current_track.artist || 'Неизвестный исполнитель'}</div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
-                    } else {
-                        nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.mic_active ? 'Микрофон активен' : 'Эфир не активен'}</div><div class="artist"></div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
-                    }
-                    const statusDiv = document.getElementById('streamStatus');
-                    if (data.is_live || data.mic_active) {
-                        statusDiv.innerHTML = '<span>🔴</span><span class="live">Поток активен</span>';
-                    } else {
-                        statusDiv.innerHTML = '<span>⭕</span><span style="color: #ff6b6b;">Поток остановлен</span>';
-                    }
-                } catch (error) { console.error('Ошибка:', error); }
-            }
-            window.onload = function() {
-                document.getElementById('streamUrl').textContent = window.location.origin + '/api/radio/stream';
-                refreshStats();
-                setInterval(refreshStats, 2000);
-            };
-            document.getElementById('audioPlayer').addEventListener('error', function(e) {
-                document.getElementById('streamStatus').innerHTML = '<span>❌</span><span style="color: #ff6b6b;">Ошибка подключения</span>';
-            });
-        </script>
-    </body>
-    </html>
-    ''')
+    return render_template('debug_radio.html')
 
 @app.route('/dj')
 def dj_panel():
-    return render_template_string('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>DJ Panel</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
-            .container { max-width: 800px; margin: 0 auto; }
-            .status { background: #16213e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-            .track-list { background: #0f3460; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-            .button-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-            button { background: #e94560; color: white; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 5px; }
-            button:hover { background: #ff6b6b; }
-            .mic-btn { background: #f39c12; }
-            .mixer-btn { background: #9b59b6; }
-            .mixer-btn.active { background: #2ecc71; }
-            .stop-btn { background: #e74c3c; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🎧 DJ Panel</h1>
-            <div class="status" id="status">Loading...</div>
-            
-            <div class="button-group">
-                <button id="micBtn" class="mic-btn">🎤 Включить микрофон</button>
-                <button id="mixerBtn" class="mixer-btn">🎛️ Режим: РАЗДЕЛЬНЫЙ</button>
-                <button id="stopBtn" class="stop-btn">⏹ Остановить эфир</button>
-            </div>
-            
-            <div class="track-list">
-                <h2>Available Tracks</h2>
-                <div id="tracks"></div>
-            </div>
-        </div>
-        <script>
-            let micActive = false;
-            let mixerEnabled = false;
-            
-            async function updateStatus() {
-                const res = await fetch('/api/radio/status');
-                const data = await res.json();
-                document.getElementById('status').innerHTML = `
-                    <p>🎵 Трек: ${data.current_track ? data.current_track.title : 'None'}</p>
-                    <p>🎤 Микрофон: ${data.mic_active ? 'ON' : 'OFF'}</p>
-                    <p>👥 Слушателей: ${data.listeners}</p>
-                    <p>🎛️ Режим: ${data.mixer_enabled ? 'МИКШИРОВАНИЕ' : 'РАЗДЕЛЬНЫЙ'}</p>
-                `;
-                micActive = data.mic_active;
-                mixerEnabled = data.mixer_enabled;
-                
-                const micBtn = document.getElementById('micBtn');
-                micBtn.textContent = micActive ? '🔴 Выключить микрофон' : '🎤 Включить микрофон';
-                
-                const mixerBtn = document.getElementById('mixerBtn');
-                mixerBtn.textContent = mixerEnabled ? '🎛️ Режим: МИКШИРОВАНИЕ' : '🎛️ Режим: РАЗДЕЛЬНЫЙ';
-                mixerBtn.classList.toggle('active', mixerEnabled);
-            }
-            
-            async function loadTracks() {
-                const res = await fetch('/api/tracks');
-                const tracks = await res.json();
-                document.getElementById('tracks').innerHTML = tracks.map(track => `<button onclick="playTrack(${track.id})">${track.title} - ${track.artist}</button>`).join('');
-            }
-            
-            async function playTrack(id) {
-                await fetch(`/api/radio/play/${id}`, {method: 'POST'});
-                updateStatus();
-            }
-            
-            async function toggleMic() {
-                const action = micActive ? 'off' : 'on';
-                await fetch('/api/radio/mic', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({action})
-                });
-                updateStatus();
-            }
-            
-            async function toggleMixer() {
-                const enable = !mixerEnabled;
-                await fetch('/api/radio/mixer', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({enable})
-                });
-                updateStatus();
-            }
-            
-            async function stopRadio() {
-                await fetch('/api/radio/stop', {method: 'POST'});
-                updateStatus();
-            }
-            
-            document.getElementById('micBtn').addEventListener('click', toggleMic);
-            document.getElementById('mixerBtn').addEventListener('click', toggleMixer);
-            document.getElementById('stopBtn').addEventListener('click', stopRadio);
-            
-            loadTracks();
-            updateStatus();
-            setInterval(updateStatus, 2000);
-        </script>
-    </body>
-    </html>
-    ''')
+    return render_template('dj_panel.html')
 
 if __name__ == '__main__':
     os.makedirs('music_files', exist_ok=True)

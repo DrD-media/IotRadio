@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DJ Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial; background: #1a1a2e; color: white; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { background: #16213e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .track-list { background: #0f3460; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .button-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        button { background: #e94560; color: white; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 5px; }
+        button:hover { background: #ff6b6b; }
+        .mic-btn { background: #f39c12; }
+        .mixer-btn { background: #9b59b6; }
+        .mixer-btn.active { background: #2ecc71; }
+        .stop-btn { background: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎧 DJ Panel</h1>
+        <div class="status" id="status">Loading...</div>
+        
+        <div class="button-group">
+            <button id="micBtn" class="mic-btn">🎤 Включить микрофон</button>
+            <button id="mixerBtn" class="mixer-btn">🎛️ Режим: РАЗДЕЛЬНЫЙ</button>
+            <button id="stopBtn" class="stop-btn">⏹ Остановить эфир</button>
+        </div>
+        
+        <div class="track-list">
+            <h2>Available Tracks</h2>
+            <div id="tracks"></div>
+        </div>
+    </div>
+    <script>
+        let micActive = false;
+        let mixerEnabled = false;
+        
+        async function updateStatus() {
+            const res = await fetch('/api/radio/status');
+            const data = await res.json();
+            document.getElementById('status').innerHTML = `
+                <p>🎵 Трек: ${data.current_track ? data.current_track.title : 'None'}</p>
+                <p>🎤 Микрофон: ${data.mic_active ? 'ON' : 'OFF'}</p>
+                <p>👥 Слушателей: ${data.listeners}</p>
+                <p>🎛️ Режим: ${data.mixer_enabled ? 'МИКШИРОВАНИЕ' : 'РАЗДЕЛЬНЫЙ'}</p>
+            `;
+            micActive = data.mic_active;
+            mixerEnabled = data.mixer_enabled;
+            
+            const micBtn = document.getElementById('micBtn');
+            micBtn.textContent = micActive ? '🔴 Выключить микрофон' : '🎤 Включить микрофон';
+            
+            const mixerBtn = document.getElementById('mixerBtn');
+            mixerBtn.textContent = mixerEnabled ? '🎛️ Режим: МИКШИРОВАНИЕ' : '🎛️ Режим: РАЗДЕЛЬНЫЙ';
+            mixerBtn.classList.toggle('active', mixerEnabled);
+        }
+        
+        async function loadTracks() {
+            const res = await fetch('/api/tracks');
+            const tracks = await res.json();
+            document.getElementById('tracks').innerHTML = tracks.map(track => `<button onclick="playTrack(${track.id})">${track.title} - ${track.artist}</button>`).join('');
+        }
+        
+        async function playTrack(id) {
+            await fetch(`/api/radio/play/${id}`, {method: 'POST'});
+            updateStatus();
+        }
+        
+        async function toggleMic() {
+            const action = micActive ? 'off' : 'on';
+            await fetch('/api/radio/mic', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action})
+            });
+            updateStatus();
+        }
+        
+        async function toggleMixer() {
+            const enable = !mixerEnabled;
+            await fetch('/api/radio/mixer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enable})
+            });
+            updateStatus();
+        }
+        
+        async function stopRadio() {
+            await fetch('/api/radio/stop', {method: 'POST'});
+            updateStatus();
+        }
+        
+        document.getElementById('micBtn').addEventListener('click', toggleMic);
+        document.getElementById('mixerBtn').addEventListener('click', toggleMixer);
+        document.getElementById('stopBtn').addEventListener('click', stopRadio);
+        
+        loadTracks();
+        updateStatus();
+        setInterval(updateStatus, 2000);
+    </script>
+</body>
+</html>
+
+<!-- http://localhost:5000/dj для открытия страницы -->

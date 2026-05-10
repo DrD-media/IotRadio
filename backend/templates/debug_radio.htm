@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>📻 Техническая страница радио</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .debug-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 30px;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        h1 { color: white; font-size: 1.8rem; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .badge { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; }
+        .stream-info { background: rgba(0, 0, 0, 0.3); border-radius: 15px; padding: 15px; margin-bottom: 20px; border: 1px solid rgba(255, 255, 255, 0.1); }
+        .url-box { background: rgba(255, 255, 255, 0.1); padding: 12px; border-radius: 10px; font-family: monospace; font-size: 0.85rem; color: #4ecdc4; word-break: break-all; margin: 10px 0; }
+        .status { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: rgba(78, 205, 196, 0.1); border: 1px solid #4ecdc4; }
+        .live { color: #4ecdc4; font-weight: bold; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        audio { width: 100%; margin: 20px 0; border-radius: 30px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }
+        .stat-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 15px; text-align: center; }
+        .stat-label { font-size: 0.8rem; color: rgba(255, 255, 255, 0.5); margin-bottom: 5px; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; color: #4ecdc4; }
+        .now-playing { background: rgba(102, 126, 234, 0.1); border-radius: 15px; padding: 15px; margin: 20px 0; border-left: 4px solid #667eea; }
+        .now-playing h3 { font-size: 0.9rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 8px; }
+        .now-playing .title { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+        .refresh-btn { width: 100%; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: white; padding: 12px; border-radius: 30px; cursor: pointer; font-size: 1rem; transition: all 0.3s; }
+        .refresh-btn:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+        .footer-note { margin-top: 20px; font-size: 0.8rem; color: rgba(255, 255, 255, 0.3); text-align: center; }
+        .mic-indicator { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; margin-top: 10px; }
+        .mic-on { background: rgba(78, 205, 196, 0.2); border: 1px solid #4ecdc4; color: #4ecdc4; }
+        .mic-off { background: rgba(255, 107, 107, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <h1><span>📻</span> Техническая страница радио</h1>
+        <div class="badge">🔧 DEBUG MODE</div>
+        <div class="stream-info">
+            <div style="margin-bottom: 10px;">🎵 Прямой эфир</div>
+            <div class="url-box" id="streamUrl"></div>
+            <div class="status" id="streamStatus"><span>⏳</span><span>Проверка соединения...</span></div>
+        </div>
+        <audio id="audioPlayer" controls autoplay><source src="/api/radio/stream" type="audio/L16"></audio>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Слушателей</div><div class="stat-value" id="listeners">0</div></div>
+            <div class="stat-card"><div class="stat-label">Буфер</div><div class="stat-value" id="buffer">0</div></div>
+        </div>
+        <div class="now-playing" id="nowPlaying"><h3>🎵 Сейчас в эфире</h3><div class="title">Загрузка...</div><div class="artist"></div><div id="micStatus"></div></div>
+        <button class="refresh-btn" onclick="refreshStats()">🔄 Обновить информацию</button>
+        <div class="footer-note">Техническая страница для отладки радио-потока</div>
+    </div>
+    <script>
+        async function refreshStats() {
+            try {
+                const response = await fetch('/api/radio/status');
+                const data = await response.json();
+                document.getElementById('listeners').textContent = data.listeners || 0;
+                document.getElementById('buffer').textContent = data.queue_size || 0;
+                const nowPlayingDiv = document.getElementById('nowPlaying');
+                if (data.current_track) {
+                    nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.current_track.title || 'Неизвестно'}</div><div class="artist">${data.current_track.artist || 'Неизвестный исполнитель'}</div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
+                } else {
+                    nowPlayingDiv.innerHTML = `<h3>🎵 Сейчас в эфире</h3><div class="title">${data.mic_active ? 'Микрофон активен' : 'Эфир не активен'}</div><div class="artist"></div><div class="mic-indicator ${data.mic_active ? 'mic-on' : 'mic-off'}">${data.mic_active ? '🎤 Микрофон включен' : '🔇 Микрофон выключен'}</div>`;
+                }
+                const statusDiv = document.getElementById('streamStatus');
+                if (data.is_live || data.mic_active) {
+                    statusDiv.innerHTML = '<span>🔴</span><span class="live">Поток активен</span>';
+                } else {
+                    statusDiv.innerHTML = '<span>⭕</span><span style="color: #ff6b6b;">Поток остановлен</span>';
+                }
+            } catch (error) { console.error('Ошибка:', error); }
+        }
+        window.onload = function() {
+            document.getElementById('streamUrl').textContent = window.location.origin + '/api/radio/stream';
+            refreshStats();
+            setInterval(refreshStats, 2000);
+        };
+        document.getElementById('audioPlayer').addEventListener('error', function(e) {
+            document.getElementById('streamStatus').innerHTML = '<span>❌</span><span style="color: #ff6b6b;">Ошибка подключения</span>';
+        });
+    </script>
+</body>
+</html>
+
+<!-- http://localhost:5000/debug/radio для открытия страницы -->
