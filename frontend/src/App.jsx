@@ -3,11 +3,16 @@ import axios from 'axios';
 import Icon from './components/Icon/Icon';
 import './App.css';
 
-// Компоненты для радио
+// Компоненты для радио (правильные пути)
 import TrackSelector from './components/RadioDJ/TrackSelector';
 import PlaylistSelector from './components/RadioDJ/PlaylistSelector';
 import MicControl from './components/RadioDJ/MicControl';
 import ListenersInfo from './components/RadioDJ/ListenersInfo';
+
+// Новые компоненты для навигации
+import OnAirPanel from './components/OnAirPanel/OnAirPanel';
+import ContentManager from './components/ContentManager/ContentManager';
+import EquipmentManager from './components/EquipmentManager/EquipmentManager';
 
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import DebugRadio from './components/DebugRadio/DebugRadio';
@@ -27,12 +32,14 @@ function App() {
   const [playlists, setPlaylists] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('tracks'); // 'tracks' или 'playlists'
+  const [activeTab, setActiveTab] = useState('tracks');
   
-  // ⭐ НОВОЕ СОСТОЯНИЕ ДЛЯ РЕЖИМА МИКШЕРА
+  // Состояние для навигации
+  const [activePanel, setActivePanel] = useState('onair'); // 'onair', 'content', 'equipment'
+  
+  // Состояние микшера
   const [mixerEnabled, setMixerEnabled] = useState(false);
   
-  // Текущий год для футера
   const currentYear = new Date().getFullYear();
 
   // Загружаем начальные данные
@@ -41,7 +48,6 @@ function App() {
       try {
         setIsLoading(true);
         
-        // Параллельно загружаем треки, плейлисты и статус радио
         const [tracksRes, playlistsRes, statusRes] = await Promise.all([
           axios.get('/api/tracks'),
           axios.get('/api/playlists'),
@@ -66,7 +72,6 @@ function App() {
     
     fetchData();
     
-    // Обновляем статус каждые 2 секунды
     const interval = setInterval(async () => {
       try {
         const statusRes = await axios.get('/api/radio/status');
@@ -113,7 +118,6 @@ function App() {
     }
   };
 
-  // ⭐ НОВАЯ ФУНКЦИЯ ДЛЯ ПЕРЕКЛЮЧЕНИЯ РЕЖИМА МИКШЕРА
   const toggleMixer = async () => {
     try {
       const newState = !mixerEnabled;
@@ -132,6 +136,34 @@ function App() {
     } catch (err) {
       console.error('Error stopping radio:', err);
       alert('Ошибка при остановке');
+    }
+  };
+
+  // Рендер активной панели
+  const renderActivePanel = () => {
+    switch (activePanel) {
+      case 'onair':
+        return (
+          <OnAirPanel
+            radioStatus={radioStatus}
+            tracks={tracks}
+            playlists={playlists}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            playTrack={playTrack}
+            playPlaylist={playPlaylist}
+            toggleMic={toggleMic}
+            stopRadio={stopRadio}
+            mixerEnabled={mixerEnabled}
+            toggleMixer={toggleMixer}
+          />
+        );
+      case 'content':
+        return <ContentManager />;
+      case 'equipment':
+        return <EquipmentManager />;
+      default:
+        return null;
     }
   };
 
@@ -167,12 +199,34 @@ function App() {
               <div className="header-left">
                 <div className="logo">DrD Radio</div>
               </div>
-
               <div className="header-center">
-                <h1>
-                  <Icon name="sparks" type="png" size={24} />
+                <div className="nav-buttons">
+                <h2>
+                  <Icon name="sparks" type="png" size={26} />
                   Панель управления радио
-                </h1>
+                </h2>
+                  <button 
+                    className={`nav-btn ${activePanel === 'onair' ? 'active' : ''}`}
+                    onClick={() => setActivePanel('onair')}
+                  >
+                    <Icon name="radio" type="emoji" size={18} />
+                    Панель эфира
+                  </button>
+                  <button 
+                    className={`nav-btn ${activePanel === 'content' ? 'active' : ''}`}
+                    onClick={() => setActivePanel('content')}
+                  >
+                    <Icon name="folder" type="emoji" size={18} />
+                    Менеджер контента
+                  </button>
+                  <button 
+                    className={`nav-btn ${activePanel === 'equipment' ? 'active' : ''}`}
+                    onClick={() => setActivePanel('equipment')}
+                  >
+                    <Icon name="speaker" type="emoji" size={18} />
+                    Управление оборудованием
+                  </button>
+                </div>
               </div>
 
               <div className="header-right">
@@ -181,120 +235,8 @@ function App() {
             </header>
 
             {/* Основной контент */}
-            <main className="radio-main">
-              {/* Левая колонка - текущий эфир */}
-              <div className="now-playing-column">
-                <div className="now-playing-card">
-                  <h2>Сейчас в эфире</h2>
+            {renderActivePanel()}
 
-                  {radioStatus.current_track ? (
-                    <div className="current-track">
-                      <div className="track-cover">
-                        <div className="square-cover">
-                          {radioStatus.current_track?.cover ? (
-                            <img 
-                              src={`/api/cover/${radioStatus.current_track.cover}`}
-                              alt={radioStatus.current_track?.title}
-                              onError={(e) => {
-                                e.target.onerror = null;
-                                e.target.style.display = 'none';
-                                e.target.parentElement.innerHTML = `<div class="cover-placeholder"><span>🎵</span></div>`;
-                              }}
-                            />
-                          ) : (
-                            <div className="cover-placeholder">
-                              <Icon name="musicNote" type="emoji" size={48} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                        
-                      <div className="track-info">
-                        <h3>{radioStatus.current_track?.title || 'Нет трека'}</h3>
-                        <p className="artist">{radioStatus.current_track?.artist || 'Неизвестный исполнитель'}</p>
-                        {radioStatus.current_playlist && (
-                          <p className="playlist-badge">
-                            Из плейлиста: {radioStatus.current_playlist.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="no-track">
-                      <Icon name="musicNote" type="png" size={32} />
-                      <p>Эфир не активен</p>
-                    </div>
-                  )}
-
-                  <div className="mic-status">
-                    <div className={`mic-indicator ${radioStatus.mic_active ? 'active' : ''}`}>
-                      <Icon name="mic" type="png" size={20} />
-                      <span>Микрофон {radioStatus.mic_active ? 'включен' : 'выключен'}</span>
-                    </div>
-                  </div>
-
-                  <div className="action-buttons">
-                    <MicControl 
-                      isActive={radioStatus.mic_active} 
-                      onToggle={toggleMic} 
-                    />
-
-                    {/* ⭐ НОВАЯ КНОПКА МИКШЕРА */}
-                    <button 
-                      className={`mixer-btn ${mixerEnabled ? 'active' : ''}`}
-                      onClick={toggleMixer}
-                      title={mixerEnabled ? 'Выключить микширование (трек + микрофон)' : 'Включить микширование (трек + микрофон)'}
-                    >
-                      <Icon name="mixer" type="emoji" size={20} />
-                      {mixerEnabled ? '🎛️ Микширование ВКЛ' : '🎛️ Раздельный режим'}
-                    </button>
-
-                    <button 
-                      className="stop-btn"
-                      onClick={stopRadio}
-                      disabled={!radioStatus.is_live}
-                    >
-                      <Icon name="stop" type="png" size={20} />
-                      Остановить эфир
-                    </button>
-                  </div>
-                </div>
-              </div>
-                
-              {/* Правая колонка - управление */}
-              <div className="control-column">
-                <div className="tabs">
-                  <button 
-                    className={`tab-btn ${activeTab === 'tracks' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('tracks')}
-                  >
-                    Треки
-                  </button>
-                  <button 
-                    className={`tab-btn ${activeTab === 'playlists' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('playlists')}
-                  >
-                    Плейлисты
-                  </button>
-                </div>
-                
-                <div className="tab-content">
-                  {activeTab === 'tracks' ? (
-                    <TrackSelector 
-                      tracks={tracks}
-                      currentTrack={radioStatus.current_track}
-                      onSelectTrack={playTrack}
-                    />
-                  ) : (
-                    <PlaylistSelector 
-                      playlists={playlists}
-                      onSelectPlaylist={playPlaylist}
-                    />
-                  )}
-                </div>
-              </div>
-            </main>
-                
             {/* Футер */}
             <footer className="radio-footer">
               <div className="footer-left">
@@ -320,11 +262,8 @@ function App() {
           </div>
         } />
         <Route path="/debug/radio" element={<DebugRadio />} />
-        {/* <Route path="/test-radio" element={<TestRadio />} /> */}
       </Routes>
     </Router>
-
-    
   );
 }
 

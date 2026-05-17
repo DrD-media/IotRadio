@@ -1,0 +1,33 @@
+.equipment-manager {
+  height: 100%;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.coming-soon {
+  text-align: center;
+  padding: 50px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.coming-soon h2 {
+  color: white;
+  margin: 20px 0 10px;
+  font-size: 1.8rem;
+}
+
+.coming-soon p {
+  color: rgba(255, 255, 255, 0.7);
+  margin: 10px 0;
+}
+
+.coming-soon .hint {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.9rem;
+  margin-top: 20px;
+}

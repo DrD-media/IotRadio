@@ -23,6 +23,7 @@ const ICONS = {
   sparks: '✨',
   back: '↩️',
   hourglass_not_done: '⏳',
+  add: '➕',
 
   // НОВЫЕ ИКОНКИ ДЛЯ РАДИО
   mic: '🎤',

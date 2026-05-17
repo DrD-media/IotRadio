@@ -1,0 +1,136 @@
+/* ======================================== */
+/* ФИКС РАЗМЕРОВ КАРТОЧЕК ТРЕКОВ - МИНИМАЛЬНАЯ ВЫСОТА - АДАПТИВНАЯ ВЫСОТА */
+/* ======================================== */
+
+.track-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  /* МИНИМАЛЬНАЯ ВЫСОТА - карточка не сожмётся ниже */
+  min-height: 350px;
+  /* АДАПТИВНАЯ ВЫСОТА - может растягиваться */
+  height: auto;
+}
+
+.track-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.track-card.active {
+  background: rgba(102, 126, 234, 0.2);
+  border-color: #667eea;
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.3);
+}
+
+/* Обложка - квадратная, но не сжимает карточку */
+.track-card-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #667eea30 0%, #764ba230 100%);
+  position: relative;
+  flex-shrink: 0;  /* Не сжимается */
+}
+
+.track-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea30 0%, #764ba230 100%);
+  font-size: 1.5rem;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Информация под обложкой - ВСЁ ПОКАЗЫВАЕМ - растягивается */
+.track-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  flex: 1;  /* Занимает оставшееся место */
+}
+
+/* Название трека */
+.track-card-info h4 {
+  white-space: normal;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+  line-height: 1.3;
+  word-break: break-word;
+  line-height: 1.3;
+  min-height: 2.6em;
+}
+
+/* Исполнитель */
+.track-card-info .track-artist {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.3;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Описание трека - ВСЕГДА ПОКАЗЫВАЕМ */
+.track-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin: 4px 0 0 0; /*  margin-top: 6px; */
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.3;
+  word-break: break-word;
+  display: block;
+  overflow: visible; /* hidden; */
+}
+
+/* Бейдж "В эфире" */
+.playing-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #4ecdc4;
+  color: #1a1a2e;
+  padding: 3px 6px;
+  border-radius: 15px;
+  font-size: 0.6rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+}

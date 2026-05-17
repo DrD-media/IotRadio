@@ -10,8 +10,7 @@
       "created_date": "2024-01-15",
       "uploaded_by": 1,
       "is_public": "yes",
-      "track_texts": [
-      ]
+      "track_texts": []
     },
     {
       "id": 2,
@@ -239,7 +238,7 @@
       ]
     },
     {
-      "id":11,
+      "id": 11,
       "filename": "track 11.mp3",
       "title": "Hymn For The Weekend",
       "artist": "Coldplay",
@@ -247,7 +246,7 @@
       "cover": "unnamed cold.jpg",
       "created_date": null,
       "uploaded_by": 1,
-     "is_public": "yes",
+      "is_public": "yes",
       "track_texts": [
         {
           "id": 1,
@@ -387,6 +386,18 @@
           "language": "ru"
         }
       ]
+    },
+    {
+      "id": 17,
+      "filename": "track_20260517_222145.mp3",
+      "title": "Royalty feat Maestro Chives Neoni",
+      "artist": "Egzod",
+      "description": "Egzod - Royalty",
+      "cover": "cover_20260517_222744.jpg",
+      "created_date": "2026-05-17",
+      "uploaded_by": 1,
+      "is_public": "yes",
+      "track_texts": []
     }
   ]
 }

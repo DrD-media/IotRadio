@@ -666,6 +666,314 @@ def radio_stop():
     return jsonify({'success': True})
 
 # ============================================
+# API ДЛЯ УПРАВЛЕНИЯ ТРЕКАМИ
+# ============================================
+
+# Разрешенные расширения
+ALLOWED_AUDIO = {'mp3', 'wav', 'ogg', 'm4a'}
+ALLOWED_IMAGES = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+ALLOWED_TEXTS = {'txt'}
+
+def allowed_file(filename, allowed_set):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_set
+
+# ============================================
+# API ДЛЯ УПРАВЛЕНИЯ ТРЕКАМИ (CRUD)
+# ============================================
+
+@app.route('/api/tracks/<int:track_id>', methods=['PUT'])
+def update_track(track_id):
+    """Обновление информации о треке"""
+    try:
+        data = request.json
+        
+        # Загружаем текущие данные
+        tracks_data = load_tracks_data()
+        tracks = tracks_data.get('tracks', [])
+        
+        # Находим трек
+        track_index = None
+        for i, t in enumerate(tracks):
+            if t['id'] == track_id:
+                track_index = i
+                break
+        
+        if track_index is None:
+            return jsonify({'error': 'Track not found'}), 404
+        
+        # Обновляем поля
+        for key, value in data.items():
+            if key != 'id':
+                tracks[track_index][key] = value
+        
+        # Сохраняем
+        with open('music_data.json', 'w', encoding='utf-8') as f:
+            json.dump(tracks_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'track': tracks[track_index]})
+        
+    except Exception as e:
+        print(f"Ошибка обновления трека: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tracks/<int:track_id>', methods=['DELETE'])
+def delete_track(track_id):
+    """Удаление трека"""
+    try:
+        tracks_data = load_tracks_data()
+        tracks = tracks_data.get('tracks', [])
+        
+        # Находим и удаляем трек
+        track_to_delete = None
+        for t in tracks:
+            if t['id'] == track_id:
+                track_to_delete = t
+                break
+        
+        if track_to_delete is None:
+            return jsonify({'error': 'Track not found'}), 404
+        
+        # Удаляем файлы
+        # MP3 файл
+        mp3_path = os.path.join(BASE_DIR, 'music_files', track_to_delete.get('filename', ''))
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+        
+        # Обложка
+        cover_path = os.path.join(BASE_DIR, 'covers', track_to_delete.get('cover', ''))
+        if os.path.exists(cover_path) and track_to_delete.get('cover'):
+            os.remove(cover_path)
+        
+        # Тексты
+        for text in track_to_delete.get('track_texts', []):
+            text_path = os.path.join(BASE_DIR, 'track_texts', text.get('filename', ''))
+            if os.path.exists(text_path):
+                os.remove(text_path)
+        
+        # Удаляем из списка
+        tracks = [t for t in tracks if t['id'] != track_id]
+        tracks_data['tracks'] = tracks
+        
+        with open('music_data.json', 'w', encoding='utf-8') as f:
+            json.dump(tracks_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Ошибка удаления трека: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tracks', methods=['POST'])
+def create_track():
+    """Создание нового трека (только метаданные, без файла)"""
+    try:
+        data = request.json
+        
+        tracks_data = load_tracks_data()
+        tracks = tracks_data.get('tracks', [])
+        
+        # Генерируем новый ID
+        new_id = max([t['id'] for t in tracks]) + 1 if tracks else 1
+        
+        new_track = {
+            'id': new_id,
+            'filename': data.get('filename', f'track_{new_id}.mp3'),
+            'title': data.get('title', 'Новый трек'),
+            'artist': data.get('artist', 'Неизвестный исполнитель'),
+            'description': data.get('description', ''),
+            'cover': data.get('cover', ''),
+            'created_date': data.get('created_date', datetime.now().strftime('%Y-%m-%d')),
+            'uploaded_by': data.get('uploaded_by', 1),
+            'is_public': data.get('is_public', 'yes'),
+            'track_texts': data.get('track_texts', [])
+        }
+        
+        tracks.append(new_track)
+        
+        with open('music_data.json', 'w', encoding='utf-8') as f:
+            json.dump(tracks_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'track': new_track})
+        
+    except Exception as e:
+        print(f"Ошибка создания трека: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/upload/mp3', methods=['POST'])
+def upload_mp3():
+    """Загрузка MP3 файла"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if not allowed_file(file.filename, ALLOWED_AUDIO):
+            return jsonify({'error': 'Invalid file type'}), 400
+        
+        # Генерируем уникальное имя
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        new_filename = f"track_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        
+        # Сохраняем
+        filepath = os.path.join(BASE_DIR, 'music_files', new_filename)
+        file.save(filepath)
+        
+        return jsonify({'success': True, 'filename': new_filename})
+        
+    except Exception as e:
+        print(f"Ошибка загрузки MP3: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/upload/cover', methods=['POST'])
+def upload_cover():
+    """Загрузка обложки"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if not allowed_file(file.filename, ALLOWED_IMAGES):
+            return jsonify({'error': 'Invalid file type'}), 400
+        
+        # Генерируем уникальное имя
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        new_filename = f"cover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        
+        # Сохраняем
+        filepath = os.path.join(BASE_DIR, 'covers', new_filename)
+        file.save(filepath)
+        
+        return jsonify({'success': True, 'filename': new_filename})
+        
+    except Exception as e:
+        print(f"Ошибка загрузки обложки: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/upload/text', methods=['POST'])
+def upload_text():
+    """Загрузка текста песни (.txt)"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if not allowed_file(file.filename, ALLOWED_TEXTS):
+            return jsonify({'error': 'Invalid file type'}), 400
+        
+        # Генерируем уникальное имя
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        new_filename = f"text_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+        
+        # Сохраняем
+        filepath = os.path.join(BASE_DIR, 'track_texts', new_filename)
+        file.save(filepath)
+        
+        return jsonify({'success': True, 'filename': new_filename})
+        
+    except Exception as e:
+        print(f"Ошибка загрузки текста: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ============================================
+# API ДЛЯ УПРАВЛЕНИЯ ПЛЕЙЛИСТАМИ
+# ============================================
+
+@app.route('/api/playlists/<int:playlist_id>', methods=['PUT'])
+def update_playlist(playlist_id):
+    """Обновление информации о плейлисте"""
+    try:
+        data = request.json
+        
+        playlists_data = load_playlists()
+        playlists = playlists_data.get('playlists', [])
+        
+        playlist_index = None
+        for i, p in enumerate(playlists):
+            if p['id'] == playlist_id:
+                playlist_index = i
+                break
+        
+        if playlist_index is None:
+            return jsonify({'error': 'Playlist not found'}), 404
+        
+        # Обновляем поля
+        for key, value in data.items():
+            if key != 'id':
+                playlists[playlist_index][key] = value
+        
+        with open('playlists.json', 'w', encoding='utf-8') as f:
+            json.dump(playlists_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'playlist': playlists[playlist_index]})
+        
+    except Exception as e:
+        print(f"Ошибка обновления плейлиста: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/playlists/<int:playlist_id>', methods=['DELETE'])
+def delete_playlist(playlist_id):
+    """Удаление плейлиста"""
+    try:
+        playlists_data = load_playlists()
+        playlists = playlists_data.get('playlists', [])
+        
+        playlists = [p for p in playlists if p['id'] != playlist_id]
+        playlists_data['playlists'] = playlists
+        
+        with open('playlists.json', 'w', encoding='utf-8') as f:
+            json.dump(playlists_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Ошибка удаления плейлиста: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/playlists', methods=['POST'])
+def create_playlist():
+    """Создание нового плейлиста"""
+    try:
+        data = request.json
+        
+        playlists_data = load_playlists()
+        playlists = playlists_data.get('playlists', [])
+        
+        new_id = max([p['id'] for p in playlists]) + 1 if playlists else 1
+        
+        new_playlist = {
+            'id': new_id,
+            'name': data.get('name', 'Новый плейлист'),
+            'type': data.get('type', 'user'),
+            'owner_id': data.get('owner_id', 1),
+            'cover': data.get('cover', ''),
+            'created_date': data.get('created_date', datetime.now().strftime('%Y-%m-%d')),
+            'last_updated': datetime.now().strftime('%Y-%m-%d'),
+            'track_ids': data.get('track_ids', []),
+            'description': data.get('description', ''),
+            'is_public': data.get('is_public', 'yes')
+        }
+        
+        playlists.append(new_playlist)
+        
+        with open('playlists.json', 'w', encoding='utf-8') as f:
+            json.dump(playlists_data, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'playlist': new_playlist})
+        
+    except Exception as e:
+        print(f"Ошибка создания плейлиста: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+# ============================================
 # СТАРЫЕ ЭНДПОИНТЫ
 # ============================================
 @app.route('/api/tracks')
